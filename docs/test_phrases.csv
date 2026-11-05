@@ -1,0 +1,46 @@
+phrase,language,expected_intent,expected_day
+నాకు ఈరోజు డాక్టర్ గారి టోకెన్ కావాలి,Telugu,BOOK,today
+రేపు ఉదయం టోకెన్ బుక్ చేయండి,Telugu,BOOK,tomorrow
+naaku repu token kavali,Telugu,BOOK,tomorrow
+arey bro oka token kavali urgent ga,Telugu,BOOK,tomorrow
+నా నంబర్ ఎప్పుడు వస్తుంది?,Telugu,STATUS,
+ఎంతమంది వేచి ఉన్నారు?,Telugu,STATUS,
+naa token number status entha mandi unnaru?,Telugu,STATUS,
+టోకెన్ రద్దు చేయండి,Telugu,CANCEL,
+క్యాన్సిల్ చేయండి ప్లీజ్,Telugu,CANCEL,
+naa booked token cancel cheyandi please,Telugu,CANCEL,
+అవును సరే,Telugu,YES,
+ha sare avunu confirmed,Telugu,YES,
+avunu sir cheyandi,Telugu,YES,
+వద్దు వద్దు కాదు le,Telugu,NO,
+vaddu naku vaddu,Telugu,NO,
+I want a token for today,English,BOOK,today
+Book an appointment for tomorrow,English,BOOK,tomorrow
+I need a token for the doctor tomorrow,English,BOOK,tomorrow
+Please book one token urgently,English,BOOK,tomorrow
+What is my number?,English,STATUS,
+How many people are ahead in queue?,English,STATUS,
+What is my token status and position?,English,STATUS,
+Cancel my appointment please,English,CANCEL,
+Please delete my token,English,CANCEL,
+Remove my booked token,English,CANCEL,
+Yes confirm please,English,YES,
+Yeah okay sure,English,YES,
+Yes absolutely correct,English,YES,
+No do not proceed,English,NO,
+Nope don't stop,English,NO,
+today doctor appointment book cheyandi,Mix,BOOK,today
+tomorrow clinic token book cheyandi,Mix,BOOK,tomorrow
+i need a token repu doctor appointment,Mix,BOOK,tomorrow
+please book one token urgent ga,Mix,BOOK,tomorrow
+what is my queue status and number?,Mix,STATUS,
+my turn eppudu how many people ahead?,Mix,STATUS,
+position and queue status cheppandi,Mix,STATUS,
+please cancel my booked token,Mix,CANCEL,
+token cancel cheyandi please,Mix,CANCEL,
+urgently cancel this appointment,Mix,CANCEL,
+yes please confirm cheyandi,Mix,YES,
+yeah sare okay correct,Mix,YES,
+yes sure confirm,Mix,YES,
+no dont do it vaddu,Mix,NO,
+no stop vaddu please,Mix,NO,

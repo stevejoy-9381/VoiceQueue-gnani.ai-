@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: voicequeue-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GNANI_API_KEY=${GNANI_API_KEY}
+      - GNANI_MAX_CALLS=300
+      - DATABASE_URL=sqlite:///./voicequeue.db
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
+      - CLINIC_NAME=Demo Clinic
+    restart: unless-stopped
+

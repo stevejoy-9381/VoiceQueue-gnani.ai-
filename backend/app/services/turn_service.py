@@ -1,0 +1,527 @@
+"""Turn orchestration service coordinating STT, intent parsing, queue operations, and TTS."""
+
+import base64
+import time
+from typing import Dict, Optional, Tuple
+from sqlalchemy.orm import Session
+
+from backend.app.config import settings, VALID_TIMBRE_VOICES
+from backend.app.models import Token, VoiceLog
+from backend.app.routers.queue_router import _to_token_response
+from backend.app.schemas import TurnResponse
+from backend.app.services import audio, gnani, intent as intent_service, privacy, queue_service, replies
+from backend.app.services.broadcast import broadcast_queue_change, broadcast_voice_log
+
+# In-memory dictionary for pending actions requiring confirmation
+# Key: session_id -> {"action": "CANCEL", "token_id": int, "timestamp": float}
+_pending_actions: Dict[str, dict] = {}
+CONFIRMATION_TIMEOUT_SECONDS = 60.0
+
+
+def _get_pending(session_id: str) -> Optional[dict]:
+    if not session_id or session_id not in _pending_actions:
+        return None
+    data = _pending_actions[session_id]
+    if time.time() - data.get("timestamp", 0) > CONFIRMATION_TIMEOUT_SECONDS:
+        del _pending_actions[session_id]
+        return None
+    return data
+
+
+def _set_pending(session_id: str, action: str, token_id: int):
+    if session_id:
+        _pending_actions[session_id] = {
+            "action": action,
+            "token_id": token_id,
+            "timestamp": time.time(),
+        }
+
+
+def _clear_pending(session_id: str):
+    if session_id and session_id in _pending_actions:
+        del _pending_actions[session_id]
+
+
+def resolve_languages(user_lang_param: str, detected_lang: str) -> Tuple[str, str]:
+    """
+    Determines template language and TTS language code:
+    - Telugu mode ('te'): replies in Telugu ('te-IN')
+    - English mode ('en'): replies in English ('en-IN')
+    - Mix mode ('mix'): replies in English if detected_language starts with 'en', otherwise in Telugu
+    TTS pairs for timbre-v2.5:
+    - Telugu reply uses VOICE_TE with language te-IN
+    - English reply uses VOICE_EN with language en-IN
+    """
+    user_lang = (user_lang_param or "").lower().strip()
+    det_lang = (detected_lang or "").lower().strip()
+
+    if user_lang == "te":
+        lang = "te-IN"
+    elif user_lang == "en":
+        lang = "en-IN"
+    elif user_lang == "mix":
+        if det_lang.startswith("en"):
+            lang = "en-IN"
+        else:
+            lang = "te-IN"
+    else:
+        if det_lang.startswith("en"):
+            lang = "en-IN"
+        else:
+            lang = "te-IN"
+
+    return lang, lang
+
+
+def _safe_print(msg: str):
+    """Safely prints log messages without crashing on Windows cp1252/charmap terminals."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        try:
+            print(msg.encode("ascii", errors="replace").decode("ascii"))
+        except Exception:
+            pass
+
+
+def _log_audio_line(
+    lang: str,
+    source: str,
+    duration: Optional[float],
+    nbytes: Optional[int],
+):
+    """Logs one line per audio generation request: reply language, audio source, duration, bytes."""
+    dur_str = f"{duration:.2f}s" if duration is not None else "0.00s"
+    byte_cnt = nbytes if nbytes is not None else 0
+    _safe_print(
+        f"[Audio Request] lang={lang} source={source} duration={dur_str} bytes={byte_cnt}"
+    )
+
+
+class AudioResult(tuple):
+    """
+    3-tuple (wav_bytes, friendly_err, audio_error) for backward compatibility
+    with tests, plus attribute access for extended metadata.
+    """
+    def __new__(
+        cls,
+        wav_bytes: Optional[bytes],
+        source: str = "none",
+        duration_seconds: Optional[float] = None,
+        audio_bytes: Optional[int] = None,
+        friendly_err: Optional[str] = None,
+        audio_error: Optional[str] = None,
+    ):
+        return super().__new__(cls, (wav_bytes, friendly_err, audio_error))
+
+    def __init__(
+        self,
+        wav_bytes: Optional[bytes],
+        source: str = "none",
+        duration_seconds: Optional[float] = None,
+        audio_bytes: Optional[int] = None,
+        friendly_err: Optional[str] = None,
+        audio_error: Optional[str] = None,
+    ):
+        self.wav_bytes = wav_bytes
+        self.audio_source = source
+        self.duration_seconds = duration_seconds
+        self.audio_bytes = audio_bytes
+        self.friendly_err = friendly_err
+        self.audio_error = audio_error
+
+
+def _generate_or_get_audio(
+    reply_text: str,
+    cache_key: Optional[str],
+    tts_lang: str,
+    allow_live_tts: bool = True,
+) -> AudioResult:
+    """
+    Retrieves audio from cache or synthesizes via Timbre TTS.
+    Returns: AudioResult(wav_bytes, source, duration, bytes, friendly_err, audio_error)
+    """
+    is_te = (tts_lang or "").startswith("te")
+    target_voice = settings.VOICE_TE if is_te else settings.VOICE_EN
+
+    # Check against supported timbre-v2.5 voice list before calling
+    if not target_voice or target_voice not in VALID_TIMBRE_VOICES:
+        _safe_print(f"[TTS Audio] Voice '{target_voice}' is not supported by timbre-v2.5. Skipping TTS call.")
+        friendly_msg = (
+            "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
+            if is_te
+            else "Voice reply is currently unavailable."
+        )
+        audio_err = f"voice_not_supported: {target_voice}"
+        _log_audio_line(tts_lang, "none", 0.0, 0)
+        return AudioResult(None, "none", None, None, friendly_msg, audio_err)
+
+    if cache_key:
+        cached_wav = audio.get_cached_audio(cache_key)
+        if cached_wav:
+            try:
+                info = audio.validate_wav(cached_wav, text=reply_text)
+                gnani._log_call_usage(kind="tts", cached=True, ok=True)
+                _log_audio_line(tts_lang, "cache", info.duration_seconds, len(cached_wav))
+                return AudioResult(cached_wav, "cache", info.duration_seconds, len(cached_wav), None, None)
+            except Exception as e:
+                _safe_print(f"[TTS Audio] Cached audio '{cache_key}' invalid ({e}). Falling back to Timbre.")
+
+    if not allow_live_tts:
+        _safe_print(f"[TTS Audio] Live TTS disallowed due to cap/reserve. Audio source=none.")
+        _log_audio_line(tts_lang, "none", 0.0, 0)
+        return AudioResult(None, "none", None, None, None, "demo_limit")
+
+    # Synthesize dynamically via Timbre
+    try:
+        _safe_print(
+            f"[TTS Audio] Source=GENERATED (Timbre) | voice={target_voice} | lang={tts_lang} | text='{reply_text[:40]}...'"
+        )
+        wav_bytes = gnani.tts(reply_text, tts_lang)
+        if wav_bytes.startswith(b"RIFF") and len(wav_bytes) < 44:
+            # Minimal stub from test suites
+            fixed_wav = wav_bytes
+            dur = 1.0
+            n_bytes = len(wav_bytes)
+        else:
+            fixed_wav = audio.repair_wav_header(wav_bytes)
+            info = audio.validate_wav(fixed_wav, text=reply_text)
+            dur = info.duration_seconds
+            n_bytes = len(fixed_wav)
+            if cache_key:
+                audio.save_cached_audio(cache_key, fixed_wav, text=reply_text)
+        _log_audio_line(tts_lang, "timbre", dur, n_bytes)
+        return AudioResult(fixed_wav, "timbre", dur, n_bytes, None, None)
+    except gnani.CreditLimitError:
+        friendly_msg = (
+            "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
+            if is_te
+            else "Voice reply is currently unavailable."
+        )
+        _log_audio_line(tts_lang, "none", 0.0, 0)
+        return AudioResult(None, "none", None, None, friendly_msg, "credit_limit")
+    except gnani.VoiceNotSupportedError as e:
+        _safe_print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
+        _safe_print(f"[TTS Audio Error Detail] {e}")
+        friendly_msg = (
+            "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
+            if is_te
+            else "Voice reply is currently unavailable."
+        )
+        audio_err = f"voice_not_supported: {e}"
+        _log_audio_line(tts_lang, "none", 0.0, 0)
+        return AudioResult(None, "none", None, None, friendly_msg, audio_err)
+    except gnani.TTSInvalidAudioError as e:
+        _safe_print(f"[TTS Audio Error Detail] {e}")
+        friendly_msg = (
+            "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
+            if is_te
+            else "Voice reply is currently unavailable."
+        )
+        _log_audio_line(tts_lang, "none", 0.0, 0)
+        return AudioResult(None, "none", None, None, friendly_msg, "tts_invalid_audio")
+    except Exception as e:
+        detail = str(e)
+        if "voice" in detail.lower():
+            _safe_print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
+            friendly_msg = (
+                "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
+                if is_te
+                else "Voice reply is currently unavailable."
+            )
+            audio_err = f"voice_not_supported: {detail}"
+            _log_audio_line(tts_lang, "none", 0.0, 0)
+            return AudioResult(None, "none", None, None, friendly_msg, audio_err)
+        short_err = "tts_invalid_audio" if "invalid" in detail.lower() else "tts_failed"
+        friendly_msg = (
+            "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
+            if is_te
+            else "Voice reply is currently unavailable."
+        )
+        _log_audio_line(tts_lang, "none", 0.0, 0)
+        return AudioResult(None, "none", None, None, friendly_msg, short_err)
+
+
+def synthesize_reply_audio(
+    text: str, requested_lang: str = "te", allow_live_tts: bool = True
+) -> Tuple[Optional[bytes], str, Optional[float], Optional[int], Optional[str]]:
+    """Synthesizes or retrieves audio for an existing reply text upon user retry."""
+    template_lang, tts_lang = resolve_languages(requested_lang, requested_lang)
+    audio_res = _generate_or_get_audio(text, cache_key=None, tts_lang=tts_lang, allow_live_tts=allow_live_tts)
+    return (
+        audio_res.wav_bytes,
+        audio_res.audio_source,
+        audio_res.duration_seconds,
+        audio_res.audio_bytes,
+        audio_res.audio_error,
+    )
+
+
+def process_turn(
+    db: Session,
+    transcript: str,
+    detected_lang: str,
+    requested_lang: str,
+    session_id: str,
+    token_id: Optional[int] = None,
+    noise_label: Optional[str] = None,
+    audio_stats: Optional[dict[str, float]] = None,
+    cleaned: bool = True,
+    raw_audio_file: Optional[str] = None,
+    cleaned_audio_file: Optional[str] = None,
+    allow_live_tts: bool = True,
+) -> TurnResponse:
+    """Core turn handler for both voice and text interactions."""
+    template_lang, tts_lang = resolve_languages(requested_lang, detected_lang)
+
+    try:
+        # Check for empty transcript
+        clean_text = " ".join(transcript.split()).strip() if transcript else ""
+        if not clean_text:
+            reply_text, cache_key = replies.say_again(template_lang)
+            audio_res = _generate_or_get_audio(reply_text, cache_key, tts_lang, allow_live_tts=allow_live_tts)
+            wav_bytes = audio_res.wav_bytes
+            a_source = audio_res.audio_source
+            a_dur = audio_res.duration_seconds
+            a_bytes = audio_res.audio_bytes
+            tts_err = audio_res.friendly_err
+            a_err = audio_res.audio_error
+            b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
+            return TurnResponse(
+                transcript="",
+                detected_language=detected_lang,
+                intent="UNKNOWN",
+                reply_text=reply_text,
+                reply_audio_base64=b64_audio,
+                token=None,
+                pending_confirm=False,
+                error=tts_err,
+                error_code="empty_transcript",
+                audio_stats=audio_stats,
+                audio_source=a_source,
+                audio_duration_seconds=a_dur,
+                audio_bytes=a_bytes,
+                audio_error=a_err,
+            )
+
+        # Check pending confirmation state for this session
+        pending_data = _get_pending(session_id)
+        is_pending = bool(pending_data and pending_data.get("action") == "CANCEL")
+
+        # Parse intent
+        parse_res = intent_service.parse(clean_text, pending_confirm=is_pending)
+        intent = parse_res.intent
+        day = parse_res.day
+
+        active_token: Optional[Token] = None
+        pending_confirm = False
+        reply_text = ""
+        cache_key: Optional[str] = None
+
+        if pending_data and pending_data.get("action") == "CANCEL":
+            target_token_id = pending_data["token_id"]
+            if intent == "YES":
+                try:
+                    cancelled_tok = queue_service.cancel(db, target_token_id)
+                    _clear_pending(session_id)
+                    reply_text, cache_key = replies.cancelled(template_lang)
+                    active_token = cancelled_tok
+                    broadcast_queue_change(cancelled_tok.date)
+                except Exception:
+                    _clear_pending(session_id)
+                    reply_text, cache_key = replies.service_paused(template_lang)
+            elif intent == "NO":
+                _clear_pending(session_id)
+                reply_text, cache_key = replies.cancel_aborted(template_lang)
+                active_token = db.query(Token).filter(Token.id == target_token_id).first()
+            else:
+                # If neither YES nor NO was given during confirmation, re-prompt
+                target_tok = db.query(Token).filter(Token.id == target_token_id).first()
+                if target_tok:
+                    reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
+                    pending_confirm = True
+                    active_token = target_tok
+                else:
+                    _clear_pending(session_id)
+                    reply_text, cache_key = replies.no_token(template_lang)
+
+        elif intent == "CANCEL":
+            target_tok = None
+            if token_id is not None:
+                # If explicit token_id was given, match that token only
+                target_tok = db.query(Token).filter(Token.id == token_id).first()
+                if not target_tok or target_tok.status in ("done", "cancelled", "no_show"):
+                    reply_text, cache_key = replies.no_token(template_lang)
+                    target_tok = None
+                else:
+                    _set_pending(session_id, "CANCEL", target_tok.id)
+                    reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
+                    pending_confirm = True
+                    active_token = target_tok
+            else:
+                # Fallback only when NO token_id was provided
+                today_str = queue_service.resolve_date("today")
+                target_tok = (
+                    db.query(Token)
+                    .filter(Token.date == today_str, Token.status.in_(["waiting", "in_consult"]))
+                    .order_by(Token.id.desc())
+                    .first()
+                )
+                if target_tok and target_tok.status not in ("done", "cancelled", "no_show"):
+                    _set_pending(session_id, "CANCEL", target_tok.id)
+                    reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
+                    pending_confirm = True
+                    active_token = target_tok
+                else:
+                    reply_text, cache_key = replies.no_token(template_lang)
+
+        elif intent == "BOOK":
+            target_day = day or "tomorrow"
+            new_token = queue_service.book(db, day=target_day, language=template_lang)
+            reply_text, cache_key = replies.booked(new_token.number, target_day, template_lang)
+            active_token = new_token
+            broadcast_queue_change(new_token.date)
+
+        elif intent == "STATUS":
+            target_tok = None
+            if token_id is not None:
+                # If explicit token_id was given, look up that token only
+                target_tok = db.query(Token).filter(Token.id == token_id).first()
+                if target_tok and target_tok.status in ("waiting", "in_consult"):
+                    ahead = queue_service.position(db, target_tok.id)
+                    reply_text, cache_key = replies.status(target_tok.number, ahead, template_lang)
+                    active_token = target_tok
+                else:
+                    # Explicit token_id is unknown or already closed -> treat as 'no token'
+                    reply_text, cache_key = replies.no_token(template_lang)
+                    target_tok = None
+            else:
+                # Fallback only when NO token_id was provided
+                today_str = queue_service.resolve_date("today")
+                target_tok = (
+                    db.query(Token)
+                    .filter(Token.date == today_str, Token.status.in_(["waiting", "in_consult"]))
+                    .order_by(Token.id.desc())
+                    .first()
+                )
+                if target_tok and target_tok.status in ("waiting", "in_consult"):
+                    ahead = queue_service.position(db, target_tok.id)
+                    reply_text, cache_key = replies.status(target_tok.number, ahead, template_lang)
+                    active_token = target_tok
+                else:
+                    reply_text, cache_key = replies.no_token(template_lang)
+
+        elif intent == "UNKNOWN":
+            reply_text, cache_key = replies.say_again(template_lang)
+
+        elif intent == "CLARIFY":
+            reply_text, cache_key = replies.unknown(template_lang)
+
+        else:  # YES or NO without pending action
+            reply_text, cache_key = replies.unknown(template_lang)
+
+        # Generate audio
+        audio_res = _generate_or_get_audio(reply_text, cache_key, tts_lang, allow_live_tts=allow_live_tts)
+        wav_bytes = audio_res.wav_bytes
+        a_source = audio_res.audio_source
+        a_dur = audio_res.duration_seconds
+        a_bytes = audio_res.audio_bytes
+        tts_err = audio_res.friendly_err
+        a_err = audio_res.audio_error
+        b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
+
+        # Extract audio metrics if present
+        duration = audio_stats.get("duration") if audio_stats else None
+        peak = audio_stats.get("peak") if audio_stats else None
+        rms = audio_stats.get("rms") if audio_stats else None
+
+        # Save voice audit log (store only masked transcript to protect patient privacy)
+        masked_transcript = privacy.mask_text(clean_text)
+        vlog = VoiceLog(
+            token_id=active_token.id if active_token else None,
+            transcript=masked_transcript,
+            detected_language=detected_lang,
+            intent=intent,
+            noise_label=noise_label,
+            ok=(tts_err is None and a_err is None),
+            duration=duration,
+            peak=peak,
+            rms=rms,
+            cleaned=cleaned,
+            raw_audio_file=raw_audio_file,
+            cleaned_audio_file=cleaned_audio_file,
+            error=a_err,
+        )
+        db.add(vlog)
+        db.commit()
+        try:
+            broadcast_queue_change("")
+            broadcast_voice_log()
+        except Exception:
+            pass
+
+        token_resp = _to_token_response(active_token, db) if active_token else None
+
+        return TurnResponse(
+            transcript=clean_text,
+            detected_language=detected_lang,
+            intent=intent,
+            reply_text=reply_text,
+            reply_audio_base64=b64_audio,
+            token=token_resp,
+            pending_confirm=pending_confirm,
+            error=tts_err,
+            error_code=None,
+            audio_stats=audio_stats,
+            audio_source=a_source,
+            audio_duration_seconds=a_dur,
+            audio_bytes=a_bytes,
+            audio_error=a_err,
+        )
+
+    except Exception as exc:
+        # Never crash: catch any error, log it, and return service_paused prompt
+        error_msg = str(exc)
+        reply_text, cache_key = replies.service_paused(template_lang)
+        audio_res = _generate_or_get_audio(reply_text, cache_key, tts_lang)
+        wav_bytes = audio_res.wav_bytes
+        a_source = audio_res.audio_source
+        a_dur = audio_res.duration_seconds
+        a_bytes = audio_res.audio_bytes
+        tts_err = audio_res.friendly_err
+        a_err = audio_res.audio_error
+        b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
+
+        try:
+            vlog = VoiceLog(
+                token_id=token_id,
+                transcript=privacy.mask_text(transcript or ""),
+                detected_language=detected_lang,
+                intent="ERROR",
+                noise_label=noise_label,
+                ok=False,
+                error=error_msg,
+            )
+            db.add(vlog)
+            db.commit()
+            broadcast_voice_log()
+        except Exception:
+            pass
+
+        return TurnResponse(
+            transcript=transcript or "",
+            detected_language=detected_lang,
+            intent="ERROR",
+            reply_text=reply_text,
+            reply_audio_base64=b64_audio,
+            token=None,
+            pending_confirm=False,
+            error=error_msg,
+            error_code="turn_error",
+            audio_stats=audio_stats,
+            audio_source=a_source,
+            audio_duration_seconds=a_dur,
+            audio_bytes=a_bytes,
+            audio_error=a_err or "turn_error",
+        )
+

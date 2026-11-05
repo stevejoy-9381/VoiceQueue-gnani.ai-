@@ -1,0 +1,48 @@
+{
+  "patient": {
+    "violationsCount": 3,
+    "violations": [
+      {
+        "id": "landmark-one-main",
+        "impact": "moderate",
+        "description": "Ensure the document has a main landmark",
+        "nodes": 1
+      },
+      {
+        "id": "meta-viewport",
+        "impact": "moderate",
+        "description": "Ensure <meta name=\"viewport\"> does not disable text scaling and zooming",
+        "nodes": 1
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "description": "Ensure all page content is contained by landmarks",
+        "nodes": 6
+      }
+    ]
+  },
+  "dashboard": {
+    "violationsCount": 3,
+    "violations": [
+      {
+        "id": "aria-required-children",
+        "impact": "critical",
+        "description": "Ensure elements with an ARIA role that require child roles contain them",
+        "nodes": 1
+      },
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+        "nodes": 2
+      },
+      {
+        "id": "meta-viewport",
+        "impact": "moderate",
+        "description": "Ensure <meta name=\"viewport\"> does not disable text scaling and zooming",
+        "nodes": 1
+      }
+    ]
+  }
+}

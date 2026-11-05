@@ -1,0 +1,178 @@
+{
+  "mic_denied": {
+    "message": {
+      "te": "మైక్రోఫోన్ అనుమతి నిరాకరించబడింది.",
+      "en": "Microphone access was denied."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "too_short": {
+    "message": {
+      "te": "ఆడియో చాలా తక్కువగా ఉంది, దయచేసి కొంచెం సేపు మాట్లాడండి.",
+      "en": "Recording was too short, please speak a little longer."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  },
+  "too_quiet": {
+    "message": {
+      "te": "మీ మాట చాలా తక్కువగా వినిపించింది. దయచేసి కొంచెం గట్టిగా మాట్లాడండి.",
+      "en": "Your voice was too quiet to hear. Please speak louder."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  },
+  "too_loud": {
+    "message": {
+      "te": "ధ్వని చాలా ఎక్కువగా లేదా అస్పష్టంగా ఉంది.",
+      "en": "Audio was too loud or distorted."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  },
+  "no_speech": {
+    "message": {
+      "te": "ఎటువంటి మాటలు వినిపించలేదు. దయచేసి మైక్రోఫోన్ దగ్గరగా మళ్లీ మాట్లాడండి.",
+      "en": "No speech was detected. Please speak clearly into the microphone."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  },
+  "unclear_speech": {
+    "message": {
+      "te": "మీ మాట స్పష్టంగా అర్థం కాలేదు.",
+      "en": "Could not understand your speech clearly."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  },
+  "gnani_key_missing": {
+    "message": {
+      "te": "వాయిస్ సేవ ప్రస్తుతానికి కాన్ఫిగర్ చేయలేదు.",
+      "en": "Voice service is currently unconfigured."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "voice_invalid": {
+    "message": {
+      "te": "ఎంచుకున్న వాయిస్ సపోర్ట్ చేయబడదు.",
+      "en": "Configured voice is not supported."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "gnani_error": {
+    "message": {
+      "te": "వాయిస్ సేవలో తాత్కాలిక సమస్య ఏర్పడింది.",
+      "en": "Voice service encountered a temporary error."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "credit_limit": {
+    "message": {
+      "te": "వాయిస్ క్రెడిట్ పరిమితి ముగిసింది.",
+      "en": "Voice credit limit reached for today."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "demo_limit": {
+    "message": {
+      "te": "వాయిస్ డెమో పరిమితి ప్రస్తుతానికి పూర్తయింది. దయచేసి టైప్ చేయండి.",
+      "en": "Voice demo limit reached for now. Please watch the demo video or try typing."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "network_error": {
+    "message": {
+      "te": "క్లినిక్ సర్వర్‌తో కనెక్ట్ కాలేకపోయాము.",
+      "en": "Could not connect to the clinic server."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  },
+  "audio_unavailable": {
+    "message": {
+      "te": "సమాధానం ఆడియో ప్రస్తుతం ప్లే చేయలేకపోతున్నాము.",
+      "en": "Spoken audio reply could not be played."
+    },
+    "suggested_action": {
+      "te": "టైప్ చేయండి",
+      "en": "Type instead"
+    },
+    "action_type": "type_instead"
+  },
+  "token_not_found": {
+    "message": {
+      "te": "మీ టోకెన్ వివరాలు కనుగొనబడలేదు లేదా క్లియర్ చేయబడింది.",
+      "en": "Your token was cleared or not found."
+    },
+    "suggested_action": {
+      "te": "కొత్తది అడగండి",
+      "en": "Book a new one"
+    },
+    "action_type": "book_new"
+  },
+  "already_cancelled": {
+    "message": {
+      "te": "ఈ టోకెన్ ఇప్పటికే రద్దు చేయబడింది.",
+      "en": "This token has already been cancelled."
+    },
+    "suggested_action": {
+      "te": "కొత్తది అడగండి",
+      "en": "Book a new one"
+    },
+    "action_type": "book_new"
+  },
+  "server_error": {
+    "message": {
+      "te": "సర్వర్‌లో ఊహించని సమస్య ఏర్పడింది.",
+      "en": "Server encountered an unexpected issue."
+    },
+    "suggested_action": {
+      "te": "మళ్లీ ప్రయత్నించండి",
+      "en": "Try again"
+    },
+    "action_type": "try_again"
+  }
+}

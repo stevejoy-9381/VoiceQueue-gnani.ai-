@@ -1,0 +1,17 @@
+VoiceQueue Completed Phases:
+[x] Phase 0: Project Setup (FastAPI structure, Vite+React, health check, CORS, .env.example, .gitignore, README)
+[x] Phase 1: Gnani Client and Credit Guard (STT/TTS client, global lock, retry on 429, usage logging, credit limit guard, cycling samples, smoke test script)
+[x] Phase 2: Database and Queue Logic (Tokens & VoiceLogs tables, queue service, position math, cancel, call next, REST endpoints, pytest passing)
+[x] Phase 3: Intent Parser, Number Words, Replies (Bilingual NLU, day slot filling, Groq fallback, 0-99 spoken words, templates without digits, 39 pytest tests passing)
+[x] Phase 4: Voice & Text Endpoints, Cached Audio (Audio ffmpeg conversion, pre-cached prompt audio in Telugu & English, /voice/turn, /text/turn, cancel confirmation memory, 48 pytest tests passing)
+[x] Phase 5: Mobile Voice UI (Mobile-first '/', 110px hold-to-talk mic button, pulsing ring & 8s timer, replay from local base64, token card with 5s polling, confirm-cancel Yes/No, mic error fallback, teal #0F766E)
+[x] Phase 6: Clinic Live Queue Dashboard (Route /clinic, WebSocket /ws/queue with auto-reconnect, broadcast_queue_change, GET /voice-logs, Today/Tomorrow tabs, Now in consult with Mark done/No-show, Waiting list with highlight pulse, live Voice Activity feed, Call next/Seed/Reset, 52 pytest tests passing)
+[x] Phase 7: Credits Meter and Safety (GET /usage, GNANI_CREDITS_PER_CALL, dashboard badge amber 80% / red 100%, paused banner on both screens, credit limit blocking at GNANI_MAX_CALLS=2 with typed fallback, 55 pytest tests passing)
+[x] Phase 8: Testing Tools (docs/test_phrases.csv 45 phrases, scripts/run_text_tests.py 100% accuracy, voice_tests table, /tests UI with noise & language telemetry, CSV export, 58 pytest tests passing)
+[x] Phase 9: About Page, README, Deploy (/about page with limitations & synthetic notice, full README with ASCII diagram & env vars table, backend Dockerfile with ffmpeg, docker-compose.yml, Render & Vercel deployment notes, 0 secrets, fresh clone ready)
+[x] Phase 10: Final QA (Strict verification across all 10 checklist items, scripts/run_final_qa.py 10/10 PASS, full pytest suite 58/58 passed)
+[x] Phase 11: Demo Preparation (/demo-mode in README, 14 cached WAV prompts verified, hidden Shift+R shortcut for 4 fake tokens, ?clean=1 mode hiding debug tags, 10-line recording checklist)
+
+
+
+

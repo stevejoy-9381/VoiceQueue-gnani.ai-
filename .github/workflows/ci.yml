@@ -1,0 +1,138 @@
+name: CI / CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend Tests & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest ruff
+
+      - name: Lint with Ruff
+        run: |
+          ruff check backend/ scripts/
+
+      - name: Run Backend Pytest Suite (Stubs Only, No Real Gnani)
+        env:
+          GNANI_API_KEY: "ci-dummy-key"
+          VOICE_TE: "Lavanya"
+          VOICE_EN: "Trupti"
+        run: |
+          pytest backend/tests/ -v --tb=short
+
+  frontend:
+    name: Frontend Build & Component Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci || npm install
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Run Vitest component tests
+        run: |
+          cd frontend
+          npm test
+
+      - name: Verify dist bundle contains zero API keys or secret headers
+        run: |
+          python scripts/check_repo.py
+
+  playwright:
+    name: Playwright E2E UI Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies & Playwright browsers
+        run: |
+          cd frontend
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests (stubbed API routes)
+        run: |
+          cd frontend
+          npx playwright test e2e/screenshots_and_a11y.spec.js
+
+  secrets-scan:
+    name: Secrets & Repository Compliance Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run check_repo.py compliance suite
+        run: |
+          python scripts/check_repo.py
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  docker-build:
+    name: Docker Image Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Backend Docker Image
+        run: |
+          docker build -t voicequeue-backend:ci .
+

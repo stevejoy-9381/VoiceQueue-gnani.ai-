@@ -1,0 +1,40 @@
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+backend/debug_audio/
+debug_audio/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node dependencies and build
+node_modules/
+dist/
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+# Test results and coverage
+.pytest_cache/
+test-results/
+coverage/
+
+# Audio cache is allowed in git
+!cache/
+!cache/**
+!frontend/src/assets/audio/
+!frontend/public/audio/
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

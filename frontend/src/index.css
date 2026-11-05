@@ -1,0 +1,29 @@
+/* Coffee & Beige Theme Variables */
+:root {
+  --coffee-900: #3B2418;  /* headings, dark cards, code blocks, footer */
+  --coffee-600: #6F4E37;  /* primary buttons, links, active states */
+  --coffee-300: #A67B5B;  /* highlights, rings, hover states */
+  --beige-100:  #F5EBDD;  /* page background */
+  --beige-50:   #FBF6EE;  /* cards, nav, footer light areas */
+  --beige-300:  #E3D5C0;  /* borders and dividers */
+  --accent:     #C8893B;  /* small highlights only (badges, underline, icons) */
+  --text:       #3B2418;  /* body text on light backgrounds */
+  --text-on-dark: #FBF6EE; /* text on coffee backgrounds */
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--beige-100);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+}
