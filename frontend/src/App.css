@@ -34,6 +34,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   font-family: var(--font-stack);
   background-color: var(--beige-100);
@@ -46,13 +51,14 @@ body {
 .app-viewport {
   width: 100%;
   max-width: 480px;
-  min-width: 320px;
+  min-width: 0;
   margin: 0 auto;
-  padding: 20px 16px 40px;
+  padding: 16px 12px 40px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   background-color: var(--beige-100);
+  box-sizing: border-box;
 }
 
 /* Phase 7 Paused Banner */
@@ -154,6 +160,123 @@ body {
 
 .try-saying-chip:active {
   transform: scale(0.97);
+}
+
+/* First-visit banner */
+.first-visit-banner {
+  background-color: var(--beige-50);
+  border: 1px solid var(--coffee-300);
+  color: var(--coffee-900);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(59, 36, 24, 0.05);
+}
+
+/* Collapsible How It Works */
+.how-it-works-details {
+  background-color: var(--beige-50);
+  border: 1px solid var(--beige-300);
+  border-radius: 12px;
+  margin: 8px 0 12px 0;
+  padding: 10px 14px;
+  width: 100%;
+}
+
+.how-it-works-summary {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--coffee-900);
+  cursor: pointer;
+  outline: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.how-it-works-summary::-webkit-details-marker {
+  display: none;
+}
+
+.how-it-works-summary::after {
+  content: "▾";
+  font-size: 14px;
+  color: var(--coffee-600);
+  transition: transform 0.2s ease;
+}
+
+.how-it-works-details[open] .how-it-works-summary::after {
+  transform: rotate(180deg);
+}
+
+.how-it-works-content {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--coffee-900);
+}
+
+.how-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.how-step-num {
+  background-color: var(--coffee-600);
+  color: #FFFFFF;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.how-synthetic-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--beige-300);
+  padding-top: 6px;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Empty Token Friendly State */
+.card-empty-token {
+  background-color: var(--beige-50);
+  border: 1px dashed var(--coffee-300);
+  border-radius: 16px;
+  padding: 18px 16px;
+  text-align: center;
+  margin-top: 12px;
+}
+
+.empty-token-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--coffee-600);
+  line-height: 1.4;
+}
+
+/* Single Mic Hint Line */
+.mic-hint-line {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--coffee-600);
+  margin-top: 6px;
+  text-align: center;
 }
 
 .clinic-nav-link {
@@ -477,6 +600,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .card-label {
@@ -513,6 +638,20 @@ body {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
+}
+
+.reply-language-indicator {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--coffee-700, #543D2B);
+  background-color: var(--beige-100, #FAF6F0);
+  border: 1px solid var(--beige-300, #E0D4C3);
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-top: 8px;
+  margin-bottom: 0;
+  letter-spacing: 0.2px;
 }
 
 .placeholder-text {
@@ -868,6 +1007,12 @@ body {
   color: #b06000;
 }
 
+.mic-check-card.too-loud {
+  border-color: #e37400;
+  background: #feefe3;
+  color: #b06000;
+}
+
 .mic-check-card.too-noisy {
   border-color: #ea4335;
   background: #fce8e6;
@@ -914,5 +1059,404 @@ body {
   font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
+}
+
+/* =========================================================================
+   P2-2: Accessibility Outlines & Accessibility Bar
+   ========================================================================= */
+
+:focus-visible {
+  outline: 3px solid var(--coffee-900);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+details summary:focus-visible {
+  outline: 3px solid var(--coffee-900);
+  outline-offset: 2px;
+}
+
+.accessibility-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--beige-50);
+  border: 1px solid var(--beige-300);
+  border-radius: 12px;
+  margin-top: 2px;
+}
+
+.a11y-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--coffee-900);
+  user-select: none;
+}
+
+.a11y-toggle-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--coffee-600);
+}
+
+.reply-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.say-again-btn {
+  background-color: var(--beige-100);
+  border: 1px solid var(--coffee-600);
+  color: var(--coffee-600);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+  min-height: 44px;
+}
+
+.say-again-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.say-again-btn:not(:disabled):hover {
+  background-color: var(--coffee-600);
+  color: #FFFFFF;
+}
+
+.tap-phone-note {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* =========================================================================
+   P2-2: Elder-Friendly Mode (Large text +30%, Darkest text on cream, 64px tall buttons)
+   ========================================================================= */
+
+.elder-mode {
+  --coffee-900: #1A0F0A;
+  --coffee-600: #3B2418;
+  --text: #1A0F0A;
+  --text-muted: #2B170E;
+  --beige-50: #FFFDF8;
+  --beige-100: #F7EFE3;
+  --beige-300: #2B170E;
+  font-size: 23px; /* ~30% larger text */
+  line-height: 1.6;
+}
+
+.elder-mode .clinic-title {
+  font-size: 28px;
+  color: #1A0F0A;
+  font-weight: 900;
+}
+
+.elder-mode .clinic-tagline {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1A0F0A;
+}
+
+.elder-mode .accessibility-bar {
+  border: 2px solid #2B170E;
+  background-color: #FFFDF8;
+  padding: 12px;
+}
+
+.elder-mode .a11y-toggle-label {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1A0F0A;
+}
+
+.elder-mode .a11y-toggle-checkbox {
+  width: 22px;
+  height: 22px;
+}
+
+.elder-mode .lang-btn {
+  font-size: 18px;
+  min-height: 52px;
+  font-weight: 700;
+  color: #1A0F0A;
+}
+
+.elder-mode .lang-btn.active {
+  background-color: #1A0F0A;
+  color: #FFFDF8;
+  border: 2px solid #1A0F0A;
+}
+
+.elder-mode .clinic-nav-link {
+  font-size: 16px;
+  min-height: 48px;
+  border: 2px solid #1A0F0A;
+  color: #1A0F0A;
+  font-weight: 800;
+}
+
+.elder-mode .try-saying-label {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1A0F0A;
+}
+
+.elder-mode .try-saying-chip {
+  font-size: 17px;
+  min-height: 52px;
+  font-weight: 700;
+  color: #1A0F0A;
+  border: 2px solid #1A0F0A;
+  background-color: #FFFDF8;
+}
+
+.elder-mode .how-it-works-details {
+  border: 2px solid #1A0F0A;
+  background-color: #FFFDF8;
+}
+
+.elder-mode .how-it-works-summary {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1A0F0A;
+}
+
+.elder-mode .how-it-works-content {
+  font-size: 17px;
+  color: #1A0F0A;
+  font-weight: 600;
+}
+
+.elder-mode .how-step-num {
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  background-color: #1A0F0A;
+}
+
+.elder-mode .how-synthetic-note {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1A0F0A;
+  font-style: normal;
+  border-top: 2px solid #1A0F0A;
+}
+
+/* Mic button larger in elder mode (Req 3) */
+.elder-mode .mic-wrapper {
+  width: 170px;
+  height: 170px;
+}
+
+.elder-mode .mic-button {
+  width: 156px;
+  height: 156px;
+  border: 4px solid #1A0F0A;
+  background: #3B2418;
+}
+
+.elder-mode .mic-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.elder-mode .status-text,
+.elder-mode .mic-hint-line,
+.elder-mode .tap-phone-note {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1A0F0A;
+}
+
+.elder-mode .card {
+  border: 2px solid #1A0F0A;
+  background-color: #FFFDF8;
+}
+
+.elder-mode .card-label {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1A0F0A;
+}
+
+.elder-mode .card-content {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1A0F0A;
+}
+
+.elder-mode .placeholder-text {
+  color: #2B170E;
+  opacity: 1;
+}
+
+.elder-mode .reply-translation {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1A0F0A;
+  border-top: 2px solid #1A0F0A;
+}
+
+.elder-mode .reply-language-indicator {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1A0F0A;
+  border-color: #1A0F0A;
+}
+
+/* Replay, Say That Again, and Confirm buttons at least 64px tall (Req 3) */
+.elder-mode .replay-btn,
+.elder-mode .say-again-btn {
+  min-height: 64px;
+  font-size: 18px;
+  font-weight: 800;
+  padding: 12px 20px;
+  border: 2px solid #1A0F0A;
+  border-radius: 12px;
+}
+
+.elder-mode .replay-btn {
+  background-color: #3B2418;
+  color: #FFFDF8;
+}
+
+.elder-mode .say-again-btn {
+  background-color: #FFFDF8;
+  color: #1A0F0A;
+}
+
+.elder-mode .confirm-btn {
+  min-height: 64px;
+  font-size: 20px;
+  font-weight: 800;
+  border: 3px solid #1A0F0A;
+}
+
+.elder-mode .token-number {
+  font-size: 52px;
+  font-weight: 900;
+  color: #1A0F0A;
+}
+
+.elder-mode .token-label {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1A0F0A;
+}
+
+.elder-mode .ahead-text,
+.elder-mode .ahead-highlight {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1A0F0A;
+}
+
+.elder-mode .empty-token-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1A0F0A;
+}
+
+.elder-mode .card-empty-token {
+  border: 2px dashed #1A0F0A;
+  background-color: #FFFDF8;
+}
+
+.elder-mode .type-toggle-btn {
+  font-size: 18px;
+  font-weight: 800;
+  min-height: 52px;
+  color: #1A0F0A;
+}
+
+.elder-mode .type-input {
+  font-size: 19px;
+  min-height: 64px;
+  border: 2px solid #1A0F0A;
+  color: #1A0F0A;
+  background-color: #FFFDF8;
+}
+
+.elder-mode .type-send-btn {
+  font-size: 19px;
+  min-height: 64px;
+  font-weight: 800;
+  border: 2px solid #1A0F0A;
+  background-color: #3B2418;
+  color: #FFFDF8;
+}
+
+.elder-mode .footer-link {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1A0F0A;
+}
+
+.elder-mode .privacy-synthetic-line {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1A0F0A;
+  opacity: 1;
+}
+
+/* Ensure comfortable display at 360px viewport */
+.elder-mode .card-header-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.elder-mode .reply-actions-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.elder-mode .reply-actions-row button {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 380px) {
+  .app-viewport {
+    padding: 12px 8px 30px;
+  }
+  .lang-switcher {
+    max-width: 100%;
+  }
+  .lang-btn {
+    padding: 4px 6px;
+    font-size: 15px;
+  }
+  .accessibility-bar {
+    padding: 8px 6px;
+    gap: 8px;
+  }
+  .a11y-toggle-label {
+    font-size: 13px;
+  }
 }
 

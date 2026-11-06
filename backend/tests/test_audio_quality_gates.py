@@ -94,6 +94,31 @@ def test_quality_gate_too_quiet(client, audio_files, monkeypatch):
     assert not stt_called, "Gnani STT should NOT have been called for too_quiet audio"
 
 
+def test_quality_gate_too_loud_clipped(client, audio_files, monkeypatch):
+    """Confirm clipped/saturated audio triggers 'too_loud' and STT is NOT called."""
+    stt_called = False
+
+    def spy_stt(*args, **kwargs):
+        nonlocal stt_called
+        stt_called = True
+        return {"transcript": "dummy", "language": "te-IN"}
+
+    monkeypatch.setattr(gnani, "stt", spy_stt)
+
+    audio_bytes = audio_files["loud_clipped"].read_bytes()
+    resp = client.post(
+        "/voice/turn",
+        files={"audio": ("loud_clipped.wav", audio_bytes, "audio/wav")},
+        data={"language": "en", "session_id": "gate-test-loud", "clean": "false"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["error_code"] == "too_loud"
+    assert "loud" in data["reply_text"].lower() or "loud" in data["error"].lower()
+    assert not stt_called, "Gnani STT should NOT have been called for too_loud audio"
+
+
 def test_quality_gate_no_speech_silence(client, audio_files, monkeypatch):
     """Confirm pure silence trimmed by silence detection triggers 'no_speech' and STT is NOT called."""
     stt_called = False

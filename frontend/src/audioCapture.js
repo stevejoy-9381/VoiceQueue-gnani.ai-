@@ -402,13 +402,16 @@ export async function runMicCheck(deviceId, onProgress) {
   let verdict = 'Good';
   if (peak < 0.05 || rms < 0.008) {
     verdict = 'Too quiet';
-  } else if (peak >= 0.95 || rms > 0.30) {
+  } else if (peak >= 0.90) {
+    verdict = 'Too loud';
+  } else if (rms > 0.15) {
     verdict = 'Too noisy';
   }
 
   return {
     peak: Math.round(peak * 1000) / 1000,
     rms: Math.round(rms * 1000) / 1000,
+    level: Math.round(rms * 1000) / 1000,
     verdict,
   };
 }

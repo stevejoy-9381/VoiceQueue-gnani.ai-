@@ -15,11 +15,12 @@ import threading
 import time
 from typing import Optional
 from fastapi import Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.app.config import settings
 from backend.app.db import SessionLocal, init_db
-from backend.app.models import GnaniUsage
+from backend.app.models import GnaniUsage, VoiceLog
 
 # Thread lock for in-memory limit tracking
 _limiter_lock = threading.Lock()
@@ -92,6 +93,46 @@ def count_real_calls_today(db: Optional[Session] = None) -> int:
     init_db()
     with SessionLocal() as session:
         return _query(session)
+
+
+def count_compare_calls(db: Optional[Session] = None) -> int:
+    """Counts real STT calls made in compare / raw audio mode."""
+    def _query(session):
+        return (
+            session.query(VoiceLog)
+            .filter(
+                or_(
+                    VoiceLog.cleaned.is_(False),
+                    VoiceLog.is_compare.is_(True),
+                ),
+                (VoiceLog.error.is_(None)) | (VoiceLog.error != "compare_limit"),
+            )
+            .count()
+        )
+
+    if db is not None:
+        try:
+            return _query(db)
+        except Exception:
+            return 0
+    try:
+        init_db()
+        with SessionLocal() as session:
+            return _query(session)
+    except Exception:
+        return 0
+
+
+def check_compare_mode_limit(db: Optional[Session] = None) -> Optional[str]:
+    """
+    Checks if compare mode has reached COMPARE_MAX_CALLS (default 20).
+    Returns 'compare_limit' if limit reached, None otherwise.
+    """
+    max_compare = getattr(settings, "COMPARE_MAX_CALLS", 20)
+    used = count_compare_calls(db)
+    if used >= max_compare:
+        return "compare_limit"
+    return None
 
 
 def check_voice_turn_limit(

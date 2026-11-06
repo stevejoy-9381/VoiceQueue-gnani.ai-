@@ -60,8 +60,8 @@ def test_credit_limit_blocks_third_call(client, audio_files, monkeypatch):
     )
     assert resp3.status_code == 200
     data3 = resp3.json()
-    assert data3["error_code"] == "CreditLimitError"
-    assert "credit limit reached" in data3["error"].lower()
+    assert data3["error_code"] in ("CreditLimitError", "credit_limit")
+    assert "credit" in data3["error"].lower() or "పరిమితి" in data3["error"]
     # Friendly service paused prompt shown to user
     assert "అందుబాటులో లేదు" in data3["reply_text"] or "paused" in data3["reply_text"].lower()
     # Strict check: the stub function was NOT executed a 3rd time

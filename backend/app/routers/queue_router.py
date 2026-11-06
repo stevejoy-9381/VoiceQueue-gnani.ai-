@@ -135,13 +135,17 @@ def reset_demo_data(db: Session = Depends(get_db)):
 
 
 @router.post("/demo/seed", response_model=List[TokenResponse])
-def seed_demo_data(day: str = Query("today"), db: Session = Depends(get_db)):
-    """Seeds 6 demo tokens (Demo Patient 1 to 6)."""
+def seed_demo_data(
+    day: str = Query("today"),
+    count: int = Query(6),
+    db: Session = Depends(get_db),
+):
+    """Seeds demo tokens (default 4 fake tokens)."""
     try:
         target_date = queue_service.resolve_date(day)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    tokens = queue_service.seed_demo(db, day=day)
+    tokens = queue_service.seed_demo(db, day=day, count=count)
     broadcast_queue_change(target_date)
     return [_to_token_response(t, db) for t in tokens]
 

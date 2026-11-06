@@ -74,6 +74,9 @@ jobs:
 
       - name: Verify dist bundle contains zero API keys or secret headers
         run: |
+          # Verify dist bundle contains no X-API-Key-ID header
+          ! grep -rn "X-API-Key-ID" frontend/dist/
+          # Run full repository compliance check
           python scripts/check_repo.py
 
   playwright:

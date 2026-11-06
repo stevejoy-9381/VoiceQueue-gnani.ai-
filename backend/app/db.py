@@ -45,6 +45,7 @@ def init_db():
                     ("raw_audio_file", "VARCHAR(100)"),
                     ("cleaned_audio_file", "VARCHAR(100)"),
                     ("error", "TEXT"),
+                    ("is_compare", "BOOLEAN DEFAULT 0"),
                 ]
                 for col_name, col_type in new_cols:
                     if col_name not in existing_cols:

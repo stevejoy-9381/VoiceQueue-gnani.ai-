@@ -64,6 +64,7 @@ class VoiceLog(Base):
     raw_audio_file = Column(String(100), nullable=True)
     cleaned_audio_file = Column(String(100), nullable=True)
     error = Column(Text, nullable=True)
+    is_compare = Column(Boolean, default=False, nullable=False)
     created_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

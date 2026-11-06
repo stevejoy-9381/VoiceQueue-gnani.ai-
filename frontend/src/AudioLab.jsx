@@ -37,13 +37,27 @@ export default function AudioLab({ onBack }) {
   const [clearingAudio, setClearingAudio] = useState(false);
   const [clearAudioMsg, setClearAudioMsg] = useState(null);
 
+  // Compare mode quota status
+  const [compareStatus, setCompareStatus] = useState({ used: 0, max: 20, limit_reached: false });
+
   useEffect(() => {
     if (isDev) {
       loadTurns();
       loadComparisons();
       fetchHealth();
+      fetchCompareStatus();
     }
   }, [isDev]);
+
+  async function fetchCompareStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/audio-compare/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setCompareStatus(data);
+      }
+    } catch (e) {}
+  }
 
   async function fetchHealth() {
     try {
@@ -207,6 +221,49 @@ export default function AudioLab({ onBack }) {
           </div>
         </section>
 
+        {/* Compare Mode Status & Quota Banner */}
+        <section className="lab-card quota-card" style={{ marginBottom: '16px', padding: '14px 18px', borderLeft: compareStatus.limit_reached ? '4px solid #9E2A2B' : '4px solid #C8893B' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', color: '#4A3525' }}>
+                Compare Mode Quota: <strong>{compareStatus.used} / {compareStatus.max}</strong> real STT calls used
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6F4E37' }}>
+                Enforced by <code>COMPARE_MAX_CALLS={compareStatus.max}</code> to cap comparison calls and protect credits.
+              </p>
+            </div>
+            {compareStatus.limit_reached ? (
+              <span
+                style={{
+                  background: '#FDF2F0',
+                  color: '#9E2A2B',
+                  border: '1.5px solid #9E2A2B',
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                }}
+              >
+                ⛔ Compare limit reached
+              </span>
+            ) : (
+              <span
+                style={{
+                  background: '#E6F4EA',
+                  color: '#137333',
+                  border: '1px solid #137333',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  fontWeight: 600,
+                  fontSize: '0.80rem',
+                }}
+              >
+                ✓ Active ({compareStatus.max - compareStatus.used} calls remaining)
+              </span>
+            )}
+          </div>
+        </section>
+
         {/* Section 1: Last 10 Voice Turns */}
         <section className="lab-card">
           {debugSaveAudio && (
@@ -284,12 +341,13 @@ export default function AudioLab({ onBack }) {
                   <th>Cleaned?</th>
                   <th>Raw Audio</th>
                   <th>Cleaned Audio</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {turns.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="empty-cell">
+                    <td colSpan="10" className="empty-cell">
                       {loadingTurns ? 'Loading turns...' : 'No voice turns logged yet. Speak into the mic on the patient page to populate.'}
                     </td>
                   </tr>
@@ -327,6 +385,50 @@ export default function AudioLab({ onBack }) {
                         ) : (
                           <span className="no-audio-text">No clip</span>
                         )}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '4px', flexDirection: 'column' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCleanedTranscript(t.transcript || '');
+                              if (!sentence) setSentence(t.transcript || '');
+                            }}
+                            title="Copy transcript to Cleaned box below"
+                            style={{
+                              padding: '2px 6px',
+                              fontSize: '0.70rem',
+                              background: '#E6F4EA',
+                              color: '#137333',
+                              border: '1px solid #137333',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                          >
+                            ↳ Cleaned
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRawTranscript(t.transcript || '');
+                              if (!sentence) setSentence(t.transcript || '');
+                            }}
+                            title="Copy transcript to Raw box below"
+                            style={{
+                              padding: '2px 6px',
+                              fontSize: '0.70rem',
+                              background: '#FEF3C7',
+                              color: '#92400E',
+                              border: '1px solid #92400E',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                          >
+                            ↳ Raw
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

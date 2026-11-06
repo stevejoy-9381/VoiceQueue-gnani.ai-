@@ -4,14 +4,26 @@ import { API_BASE } from './config.js';
 
 export default function AboutPage({ onNavigate }) {
   const [groqConfigured, setGroqConfigured] = useState(false);
+  const [teluguReviewed, setTeluguReviewed] = useState(false);
   const [voiceTestsSummary, setVoiceTestsSummary] = useState(null);
 
   useEffect(() => {
-    // Check if Groq is configured
+    // Check if Groq and Telugu review are configured
     fetch(`${API_BASE}/health`)
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         setGroqConfigured(Boolean(data.groq_configured));
+        setTeluguReviewed(Boolean(data.telugu_reviewed));
+      })
+      .catch(() => {});
+
+    // Also check dedicated /telugu-review-status endpoint as fallback
+    fetch(`${API_BASE}/telugu-review-status`)
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (data.reviewed_by_native_speaker || data.all_reviewed) {
+          setTeluguReviewed(true);
+        }
       })
       .catch(() => {});
 
@@ -56,6 +68,11 @@ export default function AboutPage({ onNavigate }) {
           <p className="about-tagline">
             Voice-First Clinic Token & Queue Management System for Demo Clinic
           </p>
+          {teluguReviewed && (
+            <p className="telugu-reviewed-line" data-testid="telugu-reviewed-line">
+              ✓ Reviewed by a native speaker
+            </p>
+          )}
         </div>
         <div className="about-nav-buttons">
           <button

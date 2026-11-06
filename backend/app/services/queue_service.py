@@ -155,13 +155,13 @@ def reset_demo(db: Session) -> None:
     db.commit()
 
 
-def seed_demo(db: Session, day: str = "today") -> List[Token]:
-    """Creates 6 fake tokens labelled 'Demo Patient 1' to 'Demo Patient 6'."""
+def seed_demo(db: Session, day: str = "today", count: int = 6) -> List[Token]:
+    """Creates fake tokens (default 6) labelled 'Demo Patient 1' to 'Demo Patient N'."""
     reset_demo(db)
     target_date = resolve_date(day)
     created_tokens = []
 
-    for i in range(1, 7):
+    for i in range(1, count + 1):
         status = "in_consult" if i == 1 else "waiting"
         tok = Token(
             number=i,
@@ -177,5 +177,36 @@ def seed_demo(db: Session, day: str = "today") -> List[Token]:
     for tok in created_tokens:
         db.refresh(tok)
     return created_tokens
+
+
+def auto_seed_if_empty(db: Session, count: int = 4, day: str = "today") -> List[Token]:
+    """Seeds fake tokens (default 4) at startup when the queue is empty.
+    
+    Guarantees the live demo is never blank after a free-host restart (Phase P2-8).
+    """
+    target_date = resolve_date(day)
+    existing_count = db.query(Token).filter(Token.date == target_date).count()
+    if existing_count > 0:
+        return []
+
+    created_tokens = []
+    for i in range(1, count + 1):
+        status = "in_consult" if i == 1 else "waiting"
+        tok = Token(
+            number=i,
+            date=target_date,
+            label=f"Demo Patient {i}",
+            language="te-IN" if i % 2 == 1 else "en-IN",
+            status=status,
+        )
+        db.add(tok)
+        created_tokens.append(tok)
+
+    db.commit()
+    for tok in created_tokens:
+        db.refresh(tok)
+    print(f"[Demo Autoseed] Seeded {len(created_tokens)} tokens for {target_date} (queue was empty).")
+    return created_tokens
+
 
 

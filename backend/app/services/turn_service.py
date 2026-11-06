@@ -1,6 +1,7 @@
 """Turn orchestration service coordinating STT, intent parsing, queue operations, and TTS."""
 
 import base64
+import re
 import time
 from typing import Dict, Optional, Tuple
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from backend.app.routers.queue_router import _to_token_response
 from backend.app.schemas import TurnResponse
 from backend.app.services import audio, gnani, intent as intent_service, privacy, queue_service, replies
 from backend.app.services.broadcast import broadcast_queue_change, broadcast_voice_log
+from backend.app.services.latency_tracker import latency_tracker
 
 # In-memory dictionary for pending actions requiring confirmation
 # Key: session_id -> {"action": "CANCEL", "token_id": int, "timestamp": float}
@@ -42,15 +44,92 @@ def _clear_pending(session_id: str):
         del _pending_actions[session_id]
 
 
-def resolve_languages(user_lang_param: str, detected_lang: str) -> Tuple[str, str]:
+LOANWORDS: set[str] = {"token", "clinic", "doctor", "appointment"}
+
+ROMANIZED_TELUGU_WORDS: set[str] = {
+    "repu", "raepu", "naaku", "naku", "kavali", "kavalsi", "cheppandi", "cheppagalara",
+    "cheyyandi", "cheyandi", "cheyoddu", "cheyyoddu", "cheyyaku", "cheyaku",
+    "ivvandi", "teesukovali", "chudandi", "enti", "eppudu", "entha", "ivala",
+    "eroju", "eeroju", "ee", "roju", "vaddu", "vaddhu", "kaadu", "kadu", "naa", "na",
+    "meeda", "tho", "peru", "namaskaram", "dayachesi", "mundu", "unnaru", "vachindi",
+    "avunu", "sare", "raddu", "radhu", "oka", "okati", "rendu", "moodu", "nalugu", "aidu"
+}
+
+
+def pick_mix_reply_language(transcript: str, detected_lang: Optional[str] = None) -> str:
+    """
+    Selects the reply language for Mix mode according to Phase P2-7 rule:
+    1. Reply language follows the language used most in the transcript.
+    2. Count Telugu-script characters and Latin words (ignoring loanwords: token, clinic, doctor, appointment).
+    3. If no Telugu script is present (e.g. romanized text turns), count romanized Telugu words vs English words.
+    4. If detected_language_code from Prisma is present, use it as a tie-breaker.
+    5. If still unsure, reply in English ('en-IN').
+    Returns: 'te-IN' or 'en-IN'.
+    """
+    text = transcript or ""
+
+    # 1. Count Telugu-script Unicode characters (U+0C00 - U+0C7F)
+    telugu_chars = sum(1 for c in text if "\u0C00" <= c <= "\u0C7F")
+
+    # 2. Extract Latin words, ignoring common loanwords
+    raw_latin_words = re.findall(r"\b[A-Za-z]+\b", text)
+    latin_words = [w.lower() for w in raw_latin_words if w.lower() not in LOANWORDS]
+
+    det = (detected_lang or "").lower().strip()
+
+    if telugu_chars > 0:
+        if telugu_chars > len(latin_words):
+            return "te-IN"
+        elif len(latin_words) > telugu_chars:
+            return "en-IN"
+        else:
+            # Tie-breaker via Prisma detected_language
+            if det.startswith("te"):
+                return "te-IN"
+            elif det.startswith("en"):
+                return "en-IN"
+            return "en-IN"
+
+    # If no Telugu-script characters (e.g. romanized text):
+    if latin_words:
+        te_roman_count = sum(1 for w in latin_words if w in ROMANIZED_TELUGU_WORDS)
+        en_word_count = len(latin_words) - te_roman_count
+        if te_roman_count > en_word_count:
+            return "te-IN"
+        elif en_word_count > te_roman_count:
+            return "en-IN"
+        else:
+            # Tie-breaker via Prisma detected_language
+            if det.startswith("te"):
+                return "te-IN"
+            elif det.startswith("en"):
+                return "en-IN"
+            return "en-IN"
+
+    # Both counts are zero (empty string or only loanwords)
+    if det.startswith("te"):
+        return "te-IN"
+    elif det.startswith("en"):
+        return "en-IN"
+    return "en-IN"
+
+
+def resolve_languages(
+    user_lang_param: str,
+    detected_lang: str,
+    transcript: str = "",
+) -> Tuple[str, str]:
     """
     Determines template language and TTS language code:
     - Telugu mode ('te'): replies in Telugu ('te-IN')
     - English mode ('en'): replies in English ('en-IN')
-    - Mix mode ('mix'): replies in English if detected_language starts with 'en', otherwise in Telugu
+    - Mix mode ('mix'): follows the language used most in the transcript:
+      Counts Telugu-script characters and Latin words (ignoring loanwords).
+      Uses detected_language from Prisma as tie-breaker; if still unsure, replies in English.
     TTS pairs for timbre-v2.5:
-    - Telugu reply uses VOICE_TE with language te-IN
-    - English reply uses VOICE_EN with language en-IN
+    - Telugu reply ALWAYS uses VOICE_TE with language te-IN
+    - English reply ALWAYS uses VOICE_EN with language en-IN
+    Never uses a mismatched voice/language pair.
     """
     user_lang = (user_lang_param or "").lower().strip()
     det_lang = (detected_lang or "").lower().strip()
@@ -60,15 +139,14 @@ def resolve_languages(user_lang_param: str, detected_lang: str) -> Tuple[str, st
     elif user_lang == "en":
         lang = "en-IN"
     elif user_lang == "mix":
-        if det_lang.startswith("en"):
-            lang = "en-IN"
-        else:
-            lang = "te-IN"
+        lang = pick_mix_reply_language(transcript, det_lang)
     else:
         if det_lang.startswith("en"):
             lang = "en-IN"
-        else:
+        elif det_lang.startswith("te"):
             lang = "te-IN"
+        else:
+            lang = pick_mix_reply_language(transcript, det_lang)
 
     return lang, lang
 
@@ -96,6 +174,23 @@ def _log_audio_line(
     _safe_print(
         f"[Audio Request] lang={lang} source={source} duration={dur_str} bytes={byte_cnt}"
     )
+
+
+def log_latency_line(times: Dict[str, float]):
+    """Logs one line per request with stage times and total without secrets."""
+    total = times.get("total", 0.0)
+    stages = [
+        f"convert={times.get('convert', 0.0):.1f}ms",
+        f"clean={times.get('clean', 0.0):.1f}ms",
+        f"quality_gates={times.get('quality_gates', 0.0):.1f}ms",
+        f"stt={times.get('stt', 0.0):.1f}ms",
+        f"intent={times.get('intent', 0.0):.1f}ms",
+        f"queue_action={times.get('queue_action', 0.0):.1f}ms",
+        f"reply_choice={times.get('reply_choice', 0.0):.1f}ms",
+        f"tts_or_cache={times.get('tts_or_cache', 0.0):.1f}ms",
+        f"response_build={times.get('response_build', 0.0):.1f}ms",
+    ]
+    _safe_print(f"[Turn Latency] total={total:.1f}ms | " + " ".join(stages))
 
 
 class AudioResult(tuple):
@@ -160,7 +255,7 @@ def _generate_or_get_audio(
         cached_wav = audio.get_cached_audio(cache_key)
         if cached_wav:
             try:
-                info = audio.validate_wav(cached_wav, text=reply_text)
+                info = audio.validate_wav(cached_wav)
                 gnani._log_call_usage(kind="tts", cached=True, ok=True)
                 _log_audio_line(tts_lang, "cache", info.duration_seconds, len(cached_wav))
                 return AudioResult(cached_wav, "cache", info.duration_seconds, len(cached_wav), None, None)
@@ -168,7 +263,7 @@ def _generate_or_get_audio(
                 _safe_print(f"[TTS Audio] Cached audio '{cache_key}' invalid ({e}). Falling back to Timbre.")
 
     if not allow_live_tts:
-        _safe_print(f"[TTS Audio] Live TTS disallowed due to cap/reserve. Audio source=none.")
+        _safe_print("[TTS Audio] Live TTS disallowed due to cap/reserve. Audio source=none.")
         _log_audio_line(tts_lang, "none", 0.0, 0)
         return AudioResult(None, "none", None, None, None, "demo_limit")
 
@@ -270,23 +365,56 @@ def process_turn(
     raw_audio_file: Optional[str] = None,
     cleaned_audio_file: Optional[str] = None,
     allow_live_tts: bool = True,
+    stage_times: Optional[dict[str, float]] = None,
+    turn_start_time: Optional[float] = None,
+    is_compare: bool = False,
 ) -> TurnResponse:
-    """Core turn handler for both voice and text interactions."""
-    template_lang, tts_lang = resolve_languages(requested_lang, detected_lang)
+    """Core turn handler for both voice and text interactions with monotonic stage latency timing."""
+    template_lang, tts_lang = resolve_languages(requested_lang, detected_lang, transcript=transcript)
+    t_start = turn_start_time or time.perf_counter()
+
+    times: dict[str, float] = {
+        "convert": 0.0,
+        "clean": 0.0,
+        "quality_gates": 0.0,
+        "stt": 0.0,
+        "intent": 0.0,
+        "queue_action": 0.0,
+        "reply_choice": 0.0,
+        "tts_or_cache": 0.0,
+        "response_build": 0.0,
+        "total": 0.0,
+    }
+    if stage_times:
+        times.update(stage_times)
 
     try:
         # Check for empty transcript
         clean_text = " ".join(transcript.split()).strip() if transcript else ""
         if not clean_text:
+            t_reply = time.perf_counter()
             reply_text, cache_key = replies.say_again(template_lang)
+            times["reply_choice"] = round((time.perf_counter() - t_reply) * 1000.0, 2)
+
+            t_tts = time.perf_counter()
             audio_res = _generate_or_get_audio(reply_text, cache_key, tts_lang, allow_live_tts=allow_live_tts)
+            times["tts_or_cache"] = round((time.perf_counter() - t_tts) * 1000.0, 2)
+
             wav_bytes = audio_res.wav_bytes
             a_source = audio_res.audio_source
             a_dur = audio_res.duration_seconds
             a_bytes = audio_res.audio_bytes
             tts_err = audio_res.friendly_err
             a_err = audio_res.audio_error
+
+            t_resp = time.perf_counter()
             b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
+            times["response_build"] = round((time.perf_counter() - t_resp) * 1000.0, 2)
+            times["total"] = round((time.perf_counter() - t_start) * 1000.0, 2)
+
+            latency_tracker.record(times)
+            log_latency_line(times)
+
             return TurnResponse(
                 transcript="",
                 detected_language=detected_lang,
@@ -302,41 +430,55 @@ def process_turn(
                 audio_duration_seconds=a_dur,
                 audio_bytes=a_bytes,
                 audio_error=a_err,
+                stage_times_ms=times,
             )
 
         # Check pending confirmation state for this session
         pending_data = _get_pending(session_id)
         is_pending = bool(pending_data and pending_data.get("action") == "CANCEL")
 
-        # Parse intent
+        # Stage: intent
+        t_intent = time.perf_counter()
         parse_res = intent_service.parse(clean_text, pending_confirm=is_pending)
         intent = parse_res.intent
         day = parse_res.day
+        times["intent"] = round((time.perf_counter() - t_intent) * 1000.0, 2)
 
         active_token: Optional[Token] = None
         pending_confirm = False
         reply_text = ""
         cache_key: Optional[str] = None
 
+        # Stage: queue_action & reply_choice
+        t_queue = time.perf_counter()
+        queue_elapsed = 0.0
+        t_reply_start = None
+
         if pending_data and pending_data.get("action") == "CANCEL":
             target_token_id = pending_data["token_id"]
             if intent == "YES":
                 try:
                     cancelled_tok = queue_service.cancel(db, target_token_id)
+                    queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     _clear_pending(session_id)
+                    t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.cancelled(template_lang)
                     active_token = cancelled_tok
-                    broadcast_queue_change(cancelled_tok.date)
                 except Exception:
+                    queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     _clear_pending(session_id)
+                    t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.service_paused(template_lang)
             elif intent == "NO":
                 _clear_pending(session_id)
-                reply_text, cache_key = replies.cancel_aborted(template_lang)
                 active_token = db.query(Token).filter(Token.id == target_token_id).first()
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
+                reply_text, cache_key = replies.cancel_aborted(template_lang)
             else:
-                # If neither YES nor NO was given during confirmation, re-prompt
                 target_tok = db.query(Token).filter(Token.id == target_token_id).first()
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
                 if target_tok:
                     reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
                     pending_confirm = True
@@ -348,8 +490,9 @@ def process_turn(
         elif intent == "CANCEL":
             target_tok = None
             if token_id is not None:
-                # If explicit token_id was given, match that token only
                 target_tok = db.query(Token).filter(Token.id == token_id).first()
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
                 if not target_tok or target_tok.status in ("done", "cancelled", "no_show"):
                     reply_text, cache_key = replies.no_token(template_lang)
                     target_tok = None
@@ -359,7 +502,6 @@ def process_turn(
                     pending_confirm = True
                     active_token = target_tok
             else:
-                # Fallback only when NO token_id was provided
                 today_str = queue_service.resolve_date("today")
                 target_tok = (
                     db.query(Token)
@@ -367,6 +509,8 @@ def process_turn(
                     .order_by(Token.id.desc())
                     .first()
                 )
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
                 if target_tok and target_tok.status not in ("done", "cancelled", "no_show"):
                     _set_pending(session_id, "CANCEL", target_tok.id)
                     reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
@@ -378,25 +522,27 @@ def process_turn(
         elif intent == "BOOK":
             target_day = day or "tomorrow"
             new_token = queue_service.book(db, day=target_day, language=template_lang)
+            queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+            t_reply_start = time.perf_counter()
             reply_text, cache_key = replies.booked(new_token.number, target_day, template_lang)
             active_token = new_token
-            broadcast_queue_change(new_token.date)
 
         elif intent == "STATUS":
             target_tok = None
             if token_id is not None:
-                # If explicit token_id was given, look up that token only
                 target_tok = db.query(Token).filter(Token.id == token_id).first()
                 if target_tok and target_tok.status in ("waiting", "in_consult"):
                     ahead = queue_service.position(db, target_tok.id)
+                    queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                    t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.status(target_tok.number, ahead, template_lang)
                     active_token = target_tok
                 else:
-                    # Explicit token_id is unknown or already closed -> treat as 'no token'
+                    queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                    t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.no_token(template_lang)
                     target_tok = None
             else:
-                # Fallback only when NO token_id was provided
                 today_str = queue_service.resolve_date("today")
                 target_tok = (
                     db.query(Token)
@@ -406,21 +552,36 @@ def process_turn(
                 )
                 if target_tok and target_tok.status in ("waiting", "in_consult"):
                     ahead = queue_service.position(db, target_tok.id)
+                    queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                    t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.status(target_tok.number, ahead, template_lang)
                     active_token = target_tok
                 else:
+                    queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                    t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.no_token(template_lang)
 
         elif intent == "UNKNOWN":
+            queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+            t_reply_start = time.perf_counter()
             reply_text, cache_key = replies.say_again(template_lang)
 
         elif intent == "CLARIFY":
+            queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+            t_reply_start = time.perf_counter()
             reply_text, cache_key = replies.unknown(template_lang)
 
         else:  # YES or NO without pending action
+            queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+            t_reply_start = time.perf_counter()
             reply_text, cache_key = replies.unknown(template_lang)
 
-        # Generate audio
+        reply_elapsed = (time.perf_counter() - (t_reply_start or time.perf_counter())) * 1000.0
+        times["queue_action"] = round(queue_elapsed, 2)
+        times["reply_choice"] = round(reply_elapsed, 2)
+
+        # Stage: tts_or_cache
+        t_tts = time.perf_counter()
         audio_res = _generate_or_get_audio(reply_text, cache_key, tts_lang, allow_live_tts=allow_live_tts)
         wav_bytes = audio_res.wav_bytes
         a_source = audio_res.audio_source
@@ -428,43 +589,24 @@ def process_turn(
         a_bytes = audio_res.audio_bytes
         tts_err = audio_res.friendly_err
         a_err = audio_res.audio_error
+        times["tts_or_cache"] = round((time.perf_counter() - t_tts) * 1000.0, 2)
+
+        # Stage: response_build
+        t_resp = time.perf_counter()
         b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
-
-        # Extract audio metrics if present
-        duration = audio_stats.get("duration") if audio_stats else None
-        peak = audio_stats.get("peak") if audio_stats else None
-        rms = audio_stats.get("rms") if audio_stats else None
-
-        # Save voice audit log (store only masked transcript to protect patient privacy)
-        masked_transcript = privacy.mask_text(clean_text)
-        vlog = VoiceLog(
-            token_id=active_token.id if active_token else None,
-            transcript=masked_transcript,
-            detected_language=detected_lang,
-            intent=intent,
-            noise_label=noise_label,
-            ok=(tts_err is None and a_err is None),
-            duration=duration,
-            peak=peak,
-            rms=rms,
-            cleaned=cleaned,
-            raw_audio_file=raw_audio_file,
-            cleaned_audio_file=cleaned_audio_file,
-            error=a_err,
-        )
-        db.add(vlog)
-        db.commit()
-        try:
-            broadcast_queue_change("")
-            broadcast_voice_log()
-        except Exception:
-            pass
-
         token_resp = _to_token_response(active_token, db) if active_token else None
+        times["response_build"] = round((time.perf_counter() - t_resp) * 1000.0, 2)
+        times["total"] = round((time.perf_counter() - t_start) * 1000.0, 2)
 
-        return TurnResponse(
+        latency_tracker.record(times)
+        log_latency_line(times)
+
+        # Quick Win 3: Construct client response FIRST, so client timing is not blocked by DB / WS
+        reply_lang_label = "Telugu" if template_lang.startswith("te") else "English"
+        response_obj = TurnResponse(
             transcript=clean_text,
             detected_language=detected_lang,
+            reply_language=reply_lang_label,
             intent=intent,
             reply_text=reply_text,
             reply_audio_base64=b64_audio,
@@ -477,7 +619,40 @@ def process_turn(
             audio_duration_seconds=a_dur,
             audio_bytes=a_bytes,
             audio_error=a_err,
+            stage_times_ms=times,
         )
+
+        # Quick Win 3: Database voice log audit and WebSocket broadcast happen after response preparation
+        try:
+            duration = audio_stats.get("duration") if audio_stats else None
+            peak = audio_stats.get("peak") if audio_stats else None
+            rms = audio_stats.get("rms") if audio_stats else None
+            masked_transcript = privacy.mask_text(clean_text)
+
+            vlog = VoiceLog(
+                token_id=active_token.id if active_token else None,
+                transcript=masked_transcript,
+                detected_language=detected_lang,
+                intent=intent,
+                noise_label=noise_label,
+                ok=(tts_err is None and a_err is None),
+                duration=duration,
+                peak=peak,
+                rms=rms,
+                cleaned=cleaned,
+                raw_audio_file=raw_audio_file,
+                cleaned_audio_file=cleaned_audio_file,
+                error=a_err,
+                is_compare=is_compare,
+            )
+            db.add(vlog)
+            db.commit()
+            broadcast_queue_change(active_token.date if active_token else "")
+            broadcast_voice_log()
+        except Exception as log_exc:
+            _safe_print(f"[Warning] Post-response log/broadcast error: {log_exc}")
+
+        return response_obj
 
     except Exception as exc:
         # Never crash: catch any error, log it, and return service_paused prompt
@@ -491,6 +666,10 @@ def process_turn(
         tts_err = audio_res.friendly_err
         a_err = audio_res.audio_error
         b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
+
+        times["total"] = round((time.perf_counter() - t_start) * 1000.0, 2)
+        latency_tracker.record(times)
+        log_latency_line(times)
 
         try:
             vlog = VoiceLog(
@@ -523,5 +702,6 @@ def process_turn(
             audio_duration_seconds=a_dur,
             audio_bytes=a_bytes,
             audio_error=a_err or "turn_error",
+            stage_times_ms=times,
         )
 

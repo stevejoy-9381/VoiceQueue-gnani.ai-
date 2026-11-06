@@ -28,7 +28,7 @@ from sqlalchemy.pool import StaticPool
 from backend.app.config import settings
 from backend.app.db import Base, get_db
 from backend.app.main import app
-from backend.app.services import gnani
+from backend.app.services import credit_protection, gnani
 
 # In-memory SQLite DB for tests
 TEST_DB_URL = "sqlite:///:memory:"
@@ -90,6 +90,12 @@ def setup_test_environment(monkeypatch):
     monkeypatch.setattr(settings, "VOICE_TE", "Lavanya")
     monkeypatch.setattr(settings, "VOICE_EN", "Trupti")
 
+    # Ensure test environment default rate limits are generous to prevent cross-test interference
+    monkeypatch.setattr(settings, "RATE_LIMIT_VOICE_10MIN", 500)
+    monkeypatch.setattr(settings, "RATE_LIMIT_VOICE_DAILY", 1000)
+    monkeypatch.setattr(settings, "SESSION_VOICE_CAP", 500)
+    credit_protection.reset_limits()
+
     # Stub out Gnani STT and TTS
     def stub_stt(wav_bytes: bytes, user_lang: str = "te", *args, **kwargs) -> dict:
         return {"transcript": "repu token kavali", "language": "te-IN"}
@@ -101,9 +107,11 @@ def setup_test_environment(monkeypatch):
     monkeypatch.setattr(gnani, "stt", stub_stt)
     monkeypatch.setattr(gnani, "tts", stub_tts)
     monkeypatch.setattr(gnani, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr("backend.app.services.credit_protection.SessionLocal", TestingSessionLocal)
 
     yield
 
+    credit_protection.reset_limits()
     Base.metadata.drop_all(bind=test_engine)
 
 

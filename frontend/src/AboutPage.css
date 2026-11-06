@@ -34,6 +34,21 @@
   margin: 0;
 }
 
+.telugu-reviewed-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2F6F4E; /* Dark olive green matching theme */
+  background: #E8F4EC;
+  border: 1px solid #C4E2CC;
+  border-radius: 9999px;
+  padding: 0.2rem 0.65rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
 .about-nav-buttons {
   display: flex;
   flex-wrap: wrap;

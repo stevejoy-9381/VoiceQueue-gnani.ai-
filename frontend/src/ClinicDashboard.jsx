@@ -4,7 +4,7 @@ import { API_BASE, getWebSocketUrl } from './config.js';
 
 function formatLanguageName(code) {
   if (!code) return '';
-  const lower = code.toLowerCase();
+  const lower = code.toLowerCase().trim();
   if (lower.startsWith('te')) return 'Telugu';
   if (lower.startsWith('en')) return 'English';
   if (lower.startsWith('mix')) return 'Mix';
@@ -13,6 +13,8 @@ function formatLanguageName(code) {
 
 export default function ClinicDashboard() {
   const isClean = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('clean') === '1';
+  const isPresentMode = typeof window !== 'undefined' && window.location.search.includes('present=1');
+
   const [dayTab, setDayTab] = useState('today'); // 'today' or 'tomorrow'
   const [queueData, setQueueData] = useState(null);
   const [voiceLogs, setVoiceLogs] = useState([]);
@@ -20,6 +22,10 @@ export default function ClinicDashboard() {
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState('');
   const [highlightedTokenId, setHighlightedTokenId] = useState(null);
+
+  // P2-5: Live status dot & last updated timestamp
+  const [wsStatus, setWsStatus] = useState('connecting'); // 'live', 'reconnecting', 'connecting'
+  const [lastUpdated, setLastUpdated] = useState(() => new Date().toLocaleTimeString());
 
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -31,11 +37,13 @@ export default function ClinicDashboard() {
       const res = await fetch(`${API_BASE}/queue?day=${dayTab}`);
       if (res.ok) {
         const data = await res.json();
+        setLastUpdated(new Date().toLocaleTimeString());
         if (data.tokens && data.tokens.length > prevTokensCountRef.current) {
           const newest = data.tokens[data.tokens.length - 1];
           if (newest) {
             setHighlightedTokenId(newest.id);
-            setTimeout(() => setHighlightedTokenId(null), 2500);
+            // P2-5: Highlight new token row for exactly 2 seconds
+            setTimeout(() => setHighlightedTokenId(null), 2000);
           }
         }
         prevTokensCountRef.current = data.tokens ? data.tokens.length : 0;
@@ -90,10 +98,12 @@ export default function ClinicDashboard() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('[WebSocket] Connected to queue updates');
+        setWsStatus('live');
+        setLastUpdated(new Date().toLocaleTimeString());
       };
 
       ws.onmessage = (event) => {
+        setLastUpdated(new Date().toLocaleTimeString());
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'queue_changed') {
@@ -116,11 +126,12 @@ export default function ClinicDashboard() {
       };
 
       ws.onclose = () => {
-        console.log('[WebSocket] Disconnected. Reconnecting in 2s...');
+        setWsStatus('reconnecting');
         reconnectTimeoutRef.current = setTimeout(connectWs, 2000);
       };
 
       ws.onerror = () => {
+        setWsStatus('reconnecting');
         ws.close();
       };
     }
@@ -138,24 +149,49 @@ export default function ClinicDashboard() {
     };
   }, [fetchQueue, fetchVoiceLogs, fetchUsage]);
 
-  // Hidden keyboard shortcut on dashboard: Shift+R resets and seeds demo data
+  const inConsult = queueData?.current_in_consult;
+
+  // P2-5: Keyboard shortcuts N for Call next and D for Mark done (only when no input is focused)
   useEffect(() => {
     function handleKeyDown(e) {
-      if (e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        activeTag === 'select' ||
+        document.activeElement?.isContentEditable
+      ) {
+        return;
+      }
+
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        handleResetAndSeedDemo();
+        handleCallNext();
+      } else if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (inConsult?.id) {
+          e.preventDefault();
+          handleMarkDone(inConsult.id);
+        }
+      } else if (e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        const ok = typeof window !== 'undefined' && window.confirm
+          ? window.confirm('Reset demo queue and seed 4 demo patients?')
+          : true;
+        if (ok) {
+          handleResetAndSeedDemo();
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dayTab]);
+  }, [dayTab, inConsult]);
 
   async function handleResetAndSeedDemo() {
     try {
-      setActionMessage('Resetting and seeding demo patients (Shift+R)...');
-      const res = await fetch(`${API_BASE}/demo/seed?day=${dayTab}`, { method: 'POST' });
+      setActionMessage('Resetting and seeding 4 demo patients (Shift+R)...');
+      const res = await fetch(`${API_BASE}/demo/seed?day=${dayTab}&count=4`, { method: 'POST' });
       if (res.ok) {
-        setActionMessage('Seeded demo tokens.');
+        setActionMessage('Seeded 4 demo tokens.');
         fetchQueue();
         fetchVoiceLogs();
         fetchUsage();
@@ -267,8 +303,12 @@ export default function ClinicDashboard() {
     return () => clearInterval(timer);
   }, [fetchVoiceLogs]);
 
-  const inConsult = queueData?.current_in_consult;
-  const waitingTokens = queueData?.tokens?.filter((t) => t.status === 'waiting') || [];
+  // Summary counters from queueData
+  const allTokens = queueData?.tokens || [];
+  const waitingTokens = allTokens.filter((t) => t.status === 'waiting');
+  const inConsultCount = inConsult ? 1 : allTokens.filter((t) => t.status === 'in_consult').length;
+  const doneTodayCount = allTokens.filter((t) => t.status === 'done').length;
+  const cancelledCount = allTokens.filter((t) => t.status === 'cancelled').length;
 
   // Credit calculation
   const callsUsed = usage ? usage.real_calls_today : 0;
@@ -279,7 +319,7 @@ export default function ClinicDashboard() {
   const isAmber = usageRatio >= 0.8 && !isLimitReached;
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${isPresentMode ? 'presentation-mode' : ''}`}>
       {/* Paused Credit Limit Banner */}
       {isLimitReached && (
         <div className="limit-paused-banner">
@@ -291,40 +331,56 @@ export default function ClinicDashboard() {
       <header className="dashboard-header">
         <div className="header-left">
           <h1 className="dash-clinic-title">Demo Clinic — Live Queue Dashboard</h1>
-          <div className="dash-tabs" role="tablist">
-            <button
-              type="button"
-              className={`dash-tab ${dayTab === 'today' ? 'active' : ''}`}
-              onClick={() => setDayTab('today')}
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              className={`dash-tab ${dayTab === 'tomorrow' ? 'active' : ''}`}
-              onClick={() => setDayTab('tomorrow')}
-            >
-              Tomorrow
-            </button>
+          <div className="dash-header-subrow">
+            <div className="dash-tabs" role="tablist" aria-label="Queue day selector">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dayTab === 'today'}
+                className={`dash-tab ${dayTab === 'today' ? 'active' : ''}`}
+                onClick={() => setDayTab('today')}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dayTab === 'tomorrow'}
+                className={`dash-tab ${dayTab === 'tomorrow' ? 'active' : ''}`}
+                onClick={() => setDayTab('tomorrow')}
+              >
+                Tomorrow
+              </button>
+            </div>
+
+            {/* P2-5: Live status dot driven by WebSocket & last updated timestamp */}
+            <div className="dash-live-status-badge">
+              <span className={`live-dot ${wsStatus}`} />
+              <span className="live-status-text">{wsStatus === 'live' ? 'Live' : 'Reconnecting'}</span>
+              <span className="live-status-divider">·</span>
+              <span className="live-updated-time">Last updated: {lastUpdated}</span>
+            </div>
           </div>
         </div>
 
         <div className="header-right">
-          {/* Phase 7: Credits Meter Badge */}
-          <div className="credits-badge-slot">
-            <div
-              className={`calls-meter-badge ${
-                isLimitReached ? 'meter-red' : isAmber ? 'meter-amber' : 'meter-green'
-              }`}
-            >
-              Gnani calls: {callsUsed}/{maxCalls} (Reserve: {reserve})
+          {/* Phase 7: Credits Meter Badge (Hidden in presentation mode and clean recording mode) */}
+          {!isPresentMode && !isClean && (
+            <div className="credits-badge-slot">
+              <div
+                className={`calls-meter-badge ${
+                  isLimitReached ? 'meter-red' : isAmber ? 'meter-amber' : 'meter-green'
+                }`}
+              >
+                Gnani calls: {callsUsed}/{maxCalls} (Reserve: {reserve})
+              </div>
+              {usage?.estimated_credits_used !== null && usage?.estimated_credits_used !== undefined && (
+                <span className="credits-estimated-pill">
+                  ~{usage.estimated_credits_used} cr
+                </span>
+              )}
             </div>
-            {!isClean && usage?.estimated_credits_used !== null && usage?.estimated_credits_used !== undefined && (
-              <span className="credits-estimated-pill">
-                ~{usage.estimated_credits_used} cr
-              </span>
-            )}
-          </div>
+          )}
 
           <button
             type="button"
@@ -336,44 +392,78 @@ export default function ClinicDashboard() {
           >
             ← Patient Voice App
           </button>
-          <button
-            type="button"
-            className="tests-view-btn"
-            onClick={() => {
-              window.history.pushState({}, '', '/tests');
-              window.dispatchEvent(new PopStateEvent('popstate'));
-            }}
-          >
-            🧪 Tests
-          </button>
-          <button
-            type="button"
-            className="about-view-btn"
-            onClick={() => {
-              window.history.pushState({}, '', '/about');
-              window.dispatchEvent(new PopStateEvent('popstate'));
-            }}
-          >
-            ℹ️ About
-          </button>
+          {!isPresentMode && !isClean && (
+            <>
+              <button
+                type="button"
+                className="tests-view-btn"
+                onClick={() => {
+                  window.history.pushState({}, '', '/tests');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }}
+              >
+                🧪 Tests
+              </button>
+              <button
+                type="button"
+                className="about-view-btn"
+                onClick={() => {
+                  window.history.pushState({}, '', '/about');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }}
+              >
+                ℹ️ About
+              </button>
+            </>
+          )}
         </div>
       </header>
 
+      {/* P2-5: Summary Counters (Waiting, In Consultation, Done Today, Cancelled) */}
+      <section className="summary-counters-section" aria-label="Queue Summary Counters">
+        <div className="counter-card counter-waiting">
+          <span className="counter-val">{waitingTokens.length}</span>
+          <span className="counter-lbl">Waiting</span>
+        </div>
+        <div className="counter-card counter-consult">
+          <span className="counter-val">{inConsultCount}</span>
+          <span className="counter-lbl">In Consultation</span>
+        </div>
+        <div className="counter-card counter-done">
+          <span className="counter-val">{doneTodayCount}</span>
+          <span className="counter-lbl">Done Today</span>
+        </div>
+        <div className="counter-card counter-cancelled">
+          <span className="counter-val">{cancelledCount}</span>
+          <span className="counter-lbl">Cancelled</span>
+        </div>
+      </section>
+
       {/* Global Action Bar */}
-      <div className="action-bar">
+      <section className="action-bar" aria-label="Dashboard actions">
         <div className="action-buttons-group">
           <button type="button" className="action-btn btn-call-next" onClick={handleCallNext}>
             📢 Call Next Patient
           </button>
-          <button type="button" className="action-btn btn-seed" onClick={handleSeedDemo}>
-            🌱 Seed Demo Data (1-6)
-          </button>
-          <button type="button" className="action-btn btn-reset" onClick={handleResetDemo}>
-            🔄 Reset Demo
-          </button>
+          {!isPresentMode && !isClean && (
+            <>
+              <button type="button" className="action-btn btn-seed" onClick={handleSeedDemo}>
+                🌱 Seed Demo Data (1-6)
+              </button>
+              <button type="button" className="action-btn btn-reset" onClick={handleResetDemo}>
+                🔄 Reset Demo
+              </button>
+            </>
+          )}
         </div>
+
+        {/* P2-5: Keyboard shortcuts hint line */}
+        <div className="keyboard-shortcuts-hint">
+          Shortcuts: Press <strong>N</strong> for Call next · <strong>D</strong> for Mark done
+        </div>
+
         {actionMessage && <div className="action-toast">{actionMessage}</div>}
-      </div>
+      </section>
 
       {/* 2-Column Main Layout */}
       <main className="dashboard-grid">
@@ -399,7 +489,7 @@ export default function ClinicDashboard() {
                     className="consult-btn btn-mark-done"
                     onClick={() => handleMarkDone(inConsult.id)}
                   >
-                    ✓ Mark Done
+                    ✓ Mark Done (D)
                   </button>
                   <button
                     type="button"
@@ -412,7 +502,7 @@ export default function ClinicDashboard() {
               </div>
             ) : (
               <div className="empty-state">
-                <p>No patient is currently in consultation.</p>
+                <p>No patient currently in consultation.</p>
                 <button type="button" className="empty-call-btn" onClick={handleCallNext}>
                   Click "Call Next Patient" to start
                 </button>
@@ -435,7 +525,7 @@ export default function ClinicDashboard() {
                     className={`waiting-row ${highlightedTokenId === t.id ? 'highlight-pulse' : ''}`}
                   >
                     <div className="row-left">
-                      <span className="row-token-num">Position {idx + 1} · Token #{t.number}</span>
+                      <span className="row-token-num">Position {idx + 1} - Token {t.number}</span>
                       <span className="row-patient-label">{t.label}</span>
                     </div>
                     <div className="row-right">
@@ -447,7 +537,7 @@ export default function ClinicDashboard() {
               </div>
             ) : (
               <div className="empty-state">
-                <p>No patients currently waiting for {dayTab}.</p>
+                <p>No patients waiting.</p>
               </div>
             )}
           </div>
@@ -461,15 +551,17 @@ export default function ClinicDashboard() {
                 <h2 className="card-section-title">🎙 Voice Activity Feed</h2>
                 <span className="activity-count-pill">{voiceLogs.length} events</span>
               </div>
-              <button
-                type="button"
-                className="btn-clear-logs"
-                onClick={handleClearVoiceLogs}
-                disabled={voiceLogs.length === 0}
-                title="Clear all recorded voice logs"
-              >
-                Clear voice log
-              </button>
+              {!isClean && (
+                <button
+                  type="button"
+                  className="btn-clear-logs"
+                  onClick={handleClearVoiceLogs}
+                  disabled={voiceLogs.length === 0}
+                  title="Clear all recorded voice logs"
+                >
+                  Clear voice log
+                </button>
+              )}
             </div>
 
             {voiceLogs.length > 0 ? (
@@ -478,7 +570,7 @@ export default function ClinicDashboard() {
                   <div key={log.id} className="activity-item">
                     <div className="activity-meta">
                       <span className="activity-time">{log.time}</span>
-                      <span className={`intent-badge intent-${log.intent.toLowerCase()}`}>
+                      <span className={`intent-badge intent-${(log.intent || '').toLowerCase()}`}>
                         {log.intent}
                       </span>
                       {log.token_number && (
@@ -487,7 +579,7 @@ export default function ClinicDashboard() {
                       <span className="activity-lang">{formatLanguageName(log.detected_language)}</span>
                       {(!log.ok || log.error) && (
                         <span className="activity-error-badge" title={log.error || 'Failed'}>
-                          {log.error ? log.error.replace(/_/g, ' ') : 'Failed'}
+                          {(log.error || 'Failed').replace(/_/g, ' ')}
                         </span>
                       )}
                     </div>
@@ -499,8 +591,8 @@ export default function ClinicDashboard() {
               </div>
             ) : (
               <div className="empty-state">
-                <p>No voice interactions logged yet.</p>
-                <p className="empty-hint">Interactions from the patient app appear here live.</p>
+                <p>No voice activity yet.</p>
+                <p className="empty-hint">Spoken turns from the patient app appear here live.</p>
               </div>
             )}
           </div>

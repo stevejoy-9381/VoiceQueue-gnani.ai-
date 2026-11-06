@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: voicequeue-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./voicequeue.db
+      - key: GNANI_API_KEY
+        sync: false
+      - key: VOICE_TE
+        value: Lavanya
+      - key: VOICE_EN
+        value: Trupti
+      - key: GNANI_DAILY_CAP
+        value: 150
+      - key: GNANI_RESERVE
+        value: 40
+      - key: OWNER_KEY
+        sync: false
+      - key: DEMO_VIDEO_URL
+        value: https://www.youtube.com
+      - key: DEMO_AUTOSEED
+        value: "true"
+      - key: AUDIO_CLEAN
+        value: "true"
+      - key: DEBUG_SAVE_AUDIO
+        value: "false"
+      - key: DEV_ENDPOINTS
+        value: "false"
+

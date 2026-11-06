@@ -151,13 +151,14 @@ def normalize_text(text: str) -> str:
 def _is_negated_cancel(text: str) -> bool:
     """Checks if cancellation is negated (e.g. 'do not cancel', 'token cancel vaddu')."""
     cancel_kw = r"(?:cancel|cancle|cancelling|raddu|radhu|\u0C30\u0C26\u0C4D\u0C26\u0C41|\u0C15\u0C4D\u0C2F\u0C3E\u0C28\u0C4D\u0C38\u0C3F\u0C32\u0C4D)"
-    neg_terms = (
+    en_neg_terms = r"\b(?:do\s+not|dont|don\x27t|never|not)\b"
+    all_neg_terms = (
         r"\b(?:do\s+not|dont|don\x27t|never|no|not|"
         r"vaddu|vaddhu|kaadu|kadu|cheyyoddu|cheyoddu|cheyyaku|cheyaku|oddu|valaddu)\b|"
         r"(?:\u0C35\u0C26\u0C4D\u0C26\u0C41|\u0C15\u0C3E\u0C26\u0C41|\u0C1A\u0C47\u0C2F\u0C4A\u0C26\u0C4D\u0C26\u0C41|\u0C1A\u0C47\u0C2F\u0C35\u0C26\u0C4D\u0C26\u0C41|\u0C1A\u0C47\u0C2F\u0C15\u0C41)"
     )
-    before_pat = rf"(?:{neg_terms})(?:\s+\S+){{0,3}}\s+{cancel_kw}"
-    after_pat = rf"{cancel_kw}(?:\s+\S+){{0,3}}\s+(?:{neg_terms})"
+    before_pat = rf"(?:{en_neg_terms})(?:\s+\S+){{0,2}}\s+{cancel_kw}"
+    after_pat = rf"{cancel_kw}(?:\s+\S+){{0,3}}\s+(?:{all_neg_terms})"
     return bool(re.search(before_pat, text, re.IGNORECASE) or re.search(after_pat, text, re.IGNORECASE))
 
 

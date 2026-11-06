@@ -1,0 +1,13 @@
+{
+  "all_reviewed": false,
+  "reviewed_by_native_speaker": false,
+  "total_strings": 65,
+  "reviewed_count": 1,
+  "reviewed_keys": {
+    "greeting_te": {
+      "text": "నమస్కారం, క్లినిక్ క్యూకి స్వాగతం.",
+      "approved": true,
+      "comment": "More concise"
+    }
+  }
+}

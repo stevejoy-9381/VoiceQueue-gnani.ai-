@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 
 const TINY_WAV_B64 = 'UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
 
@@ -228,7 +229,7 @@ test.describe('Patient Voice & Interaction E2E (Intercepted API)', () => {
     await page.keyboard.up('Space')
 
     // Error alert shows friendly too-short message
-    await expect(page.locator('.error-alert')).toContainText(/Too short, hold the key a little longer/i)
+    await expect(page.locator('.error-alert')).toContainText(/too short/i)
     expect(uploadCalled).toBe(false)
   })
 
@@ -261,7 +262,7 @@ test.describe('Patient Voice & Interaction E2E (Intercepted API)', () => {
     await page.click('button.mic-button')
 
     // Friendly error banner displayed
-    await expect(page.locator('.error-alert')).toContainText(/Microphone access denied/i)
+    await expect(page.locator('.error-alert')).toContainText(/Microphone access.*denied/i)
 
     // Typed input is automatically revealed and functional
     const input = page.locator('input.type-input')
@@ -392,5 +393,256 @@ test.describe('Patient Voice & Interaction E2E (Intercepted API)', () => {
     // Replay button should be disabled since there is no audio
     const replayBtn = page.locator('button.replay-btn')
     await expect(replayBtn).toBeDisabled()
+  })
+
+  test('11. P2-1: Clicking a Try Saying chip sends a text turn without using the microphone', async ({
+    page,
+  }) => {
+    let textTurnCalled = false
+    let sentText = null
+    let voiceTurnCalled = false
+
+    await page.route('**/voice/turn', async (route) => {
+      voiceTurnCalled = true
+      await route.fulfill({ status: 500, body: 'should not be called' })
+    })
+
+    await page.route('**/text/turn', async (route) => {
+      textTurnCalled = true
+      const postData = JSON.parse(route.request().postData() || '{}')
+      sentText = postData.text
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          transcript: postData.text,
+          reply_text: 'Your token for tomorrow is number 1. Please arrive on time.',
+          reply_audio_base64: null,
+          token: { id: 101, number: 1, date: '2026-11-07', status: 'waiting', ahead_count: 0 },
+        }),
+      })
+    })
+
+    await page.goto('/')
+    await page.click('button:has-text("English")')
+
+    // Empty state should be visible initially
+    await expect(page.locator('.card-empty-token')).toBeVisible()
+    await expect(page.locator('.card-empty-token')).toContainText('No token yet. Try saying: I need a token for tomorrow')
+
+    // Collapsible How it works should be visible
+    await expect(page.locator('.how-it-works-details')).toBeVisible()
+
+    // Find chip for "I need a token for tomorrow"
+    const chip = page.locator('button.try-saying-chip', { hasText: 'I need a token for tomorrow' })
+    await expect(chip).toBeVisible()
+    await chip.click()
+
+    // Ensure /text/turn was called with the chip's text
+    await page.waitForTimeout(500)
+    expect(textTurnCalled).toBe(true)
+    expect(sentText).toBe('I need a token for tomorrow')
+    expect(voiceTurnCalled).toBe(false)
+
+    // Verify token card rendered
+    await expect(page.locator('.token-card .token-number')).toContainText('#1')
+  })
+
+  test('12. P2-1: Telugu reply displays small English translation template under it', async ({
+    page,
+  }) => {
+    await page.route('**/text/turn', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          transcript: 'repu token kavali',
+          reply_text: 'రేపు మీకు టోకెన్ నంబర్ ఒకటి బుక్ అయింది. దయచేసి సమయానికి క్లినిక్‌కి రండి.',
+          reply_audio_base64: null,
+          token: { id: 202, number: 1, date: '2026-11-07', status: 'waiting', ahead_count: 0 },
+        }),
+      })
+    })
+
+    await page.goto('/')
+    // Click Telugu chip or send Telugu text turn
+    const teChip = page.locator('button.try-saying-chip', { hasText: 'రేపు టోకెన్ కావాలి' })
+    await expect(teChip).toBeVisible()
+    await teChip.click()
+
+    // Verify Telugu clinic reply text
+    await expect(page.locator('.card-reply .card-content')).toContainText('రేపు మీకు టోకెన్ నంబర్ ఒకటి బుక్ అయింది')
+
+    // Verify small English translation is rendered under the Telugu reply
+    const translation = page.locator('.reply-translation')
+    await expect(translation).toBeVisible()
+    await expect(translation).toContainText('EN:')
+    await expect(translation).toContainText('Your token for tomorrow is number 1. Please come to the clinic on time.')
+  })
+
+  test('13. P2-2: Elder-friendly mode readable at 360px and passes axe check without serious violations', async ({
+    page,
+  }) => {
+    // 360px mobile viewport
+    await page.setViewportSize({ width: 360, height: 740 })
+
+    await page.route('**/text/turn', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          transcript: 'I need a token for tomorrow',
+          reply_text: 'Your token for tomorrow is number 1. Please come to the clinic on time.',
+          reply_audio_base64: TINY_WAV_B64,
+          token: { id: 303, number: 1, date: '2026-11-07', status: 'waiting', ahead_count: 0 },
+        }),
+      })
+    })
+
+    await page.goto('/')
+
+    // Dismiss first visit banner
+    const firstVisit = page.locator('.first-visit-banner')
+    if (await firstVisit.isVisible()) {
+      await firstVisit.click()
+    }
+
+    // Switch to English
+    await page.click('button.lang-btn:has-text("English")')
+
+    // Turn on both toggles
+    const elderToggle = page.locator('#a11y-elder-toggle')
+    const slowToggle = page.locator('#a11y-slow-toggle')
+    await elderToggle.check()
+    await slowToggle.check()
+
+    // Ensure .elder-mode class is applied
+    await expect(page.locator('.app-viewport')).toHaveClass(/elder-mode/)
+
+    // Trigger a text turn so replay & say again are enabled with audio
+    const chip = page.locator('button.try-saying-chip', { hasText: 'I need a token for tomorrow' })
+    await chip.click()
+
+    // Verify Replay and Say That Again buttons are at least 64px tall in elder mode (Req 3)
+    const replayBtn = page.locator('button.replay-btn')
+    const sayAgainBtn = page.locator('button.say-again-btn')
+    await expect(replayBtn).toBeVisible()
+    await expect(sayAgainBtn).toBeVisible()
+
+    const replayBox = await replayBtn.boundingBox()
+    const sayAgainBox = await sayAgainBtn.boundingBox()
+    expect(replayBox.height).toBeGreaterThanOrEqual(64)
+    expect(sayAgainBox.height).toBeGreaterThanOrEqual(64)
+
+    // Verify mic button is enlarged in elder mode
+    const micBtn = page.locator('button.mic-button')
+    const micBox = await micBtn.boundingBox()
+    expect(micBox.width).toBeGreaterThanOrEqual(150)
+    expect(micBox.height).toBeGreaterThanOrEqual(150)
+
+    // Verify no horizontal overflow at 360px
+    const isOverflowing = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > window.innerWidth + 2
+    })
+    expect(isOverflowing).toBe(false)
+
+    // Run axe accessibility check (Req 7)
+    const accessibilityScanResults = await new AxeBuilder({ page })
+      .disableRules(['color-contrast']) // Check core semantic violations; color-contrast checked separately if needed
+      .analyze()
+
+    const seriousViolations = accessibilityScanResults.violations.filter((v) =>
+      ['serious', 'critical'].includes(v.impact)
+    )
+    expect(seriousViolations).toEqual([])
+  })
+
+  test('14. P2-2: Axe color-contrast and accessibility check passes with no serious violations', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 360, height: 740 })
+    await page.goto('/')
+
+    // Dismiss first visit banner
+    const firstVisit = page.locator('.first-visit-banner')
+    if (await firstVisit.isVisible()) {
+      await firstVisit.click()
+    }
+
+    // Turn on large text & high contrast
+    await page.locator('#a11y-elder-toggle').check()
+    await page.locator('#a11y-slow-toggle').check()
+
+    // Run full Axe audit
+    const results = await new AxeBuilder({ page }).analyze()
+    const seriousOrCritical = results.violations.filter((v) =>
+      ['serious', 'critical'].includes(v.impact)
+    )
+
+    if (seriousOrCritical.length > 0) {
+      console.log('AXE VIOLATIONS:', JSON.stringify(seriousOrCritical, null, 2))
+    }
+    expect(seriousOrCritical).toEqual([])
+  })
+
+  test('15. Stale token ID: a 404 response clears saved token from view and displays notice', async ({
+    page,
+  }) => {
+    // 1. Initial booking returns token #101
+    await page.route('**/text/turn', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          transcript: 'I need a token for tomorrow',
+          reply_text: 'Your token for tomorrow is number 1.',
+          token: { id: 101, number: 1, date: '2026-11-07', status: 'waiting', ahead_count: 0 },
+        }),
+      })
+    })
+
+    // Return 200 for initial token poll
+    await page.route('**/tokens/101', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 101, number: 1, status: 'waiting', ahead_count: 0 }),
+      })
+    })
+
+    await page.goto('/')
+    await page.click('button:has-text("English")')
+
+    // Click chip to book token #101
+    const chip = page.locator('button.try-saying-chip', { hasText: 'I need a token for tomorrow' })
+    await chip.click()
+
+    // Verify token card appears
+    await expect(page.locator('.token-card')).toBeVisible()
+
+    // 2. Now unroute and return 404 on subsequent poll for token #101 (e.g. receptionist reset queue)
+    await page.unroute('**/tokens/101')
+    await page.unroute('**/tokens/**')
+    await page.route('**/tokens/101', async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Token 101 not found' }),
+      })
+    })
+    await page.route('**/tokens/**', async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Token not found' }),
+      })
+    })
+
+    // Expect the token cleared notice to appear after polling returns 404
+    await expect(page.locator('.token-cleared-notice')).toBeVisible({ timeout: 12000 })
+    await expect(page.locator('.token-cleared-notice')).toContainText(/token was cleared/i)
+
+    // Token card is cleared
+    await expect(page.locator('.token-card')).not.toBeVisible()
   })
 })

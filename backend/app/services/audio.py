@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 import subprocess
 import tempfile
+import time
 from typing import Dict, Optional, Tuple
 import wave
 
@@ -177,63 +178,96 @@ def save_debug_audio_clip(
     return raw_filename, clean_filename
 
 
-def process_audio_with_gates(
+def is_wav16k_mono(raw_bytes: bytes) -> bool:
+    """Checks if raw bytes are already valid 16kHz mono 16-bit PCM WAV (avoids re-encoding)."""
+    if not raw_bytes or len(raw_bytes) < 44 or not raw_bytes.startswith(b"RIFF"):
+        return False
+    if len(raw_bytes) >= 12 and raw_bytes[8:12] != b"WAVE":
+        return False
+    try:
+        with io.BytesIO(raw_bytes) as buf, wave.open(buf, "rb") as wf:
+            return wf.getnchannels() == 1 and wf.getsampwidth() == 2 and wf.getframerate() == 16000
+    except Exception:
+        return False
+
+
+def is_audio_level_good(stats: Dict[str, float]) -> bool:
+    """Returns True if audio volume and SNR are already in a good range (skip cleaning)."""
+    peak = stats.get("peak", 0.0)
+    rms = stats.get("rms", 0.0)
+    return 0.15 <= peak <= 0.88 and rms >= 0.03
+
+
+def process_voice_audio_timed(
     raw_bytes: bytes,
     filename: str = "input.wav",
     clean: bool = True,
-) -> bytes:
+) -> Tuple[bytes, Dict[str, float], bool, Dict[str, float]]:
     """
-    Accepts raw audio bytes (WAV first, webm/ogg/m4a fallback), converts to 16kHz mono 16-bit WAV
-    using ffmpeg through subprocess without a shell, applies mild cleaning if AUDIO_CLEAN=true and clean=True,
-    evaluates quality gates before returning, and logs audio metrics.
+    Timed audio pipeline measuring convert, quality_gates, and clean with monotonic clock:
+    1. convert: Ingests 16kHz mono WAV directly or runs ffmpeg to convert.
+    2. quality_gates: Checks raw duration and amplitude metrics.
+    3. clean: Skips cleaning if audio level is already good, otherwise runs filter chain.
+    Returns: (wav_bytes, cleaned_stats, cleaning_ran, stage_times_ms)
     """
     if not raw_bytes or len(raw_bytes.strip()) == 0:
         raise AudioQualityGateError("no_speech", "Audio recording is empty.")
 
     ext = detect_audio_extension(raw_bytes, filename)
+    t_convert_start = time.perf_counter()
 
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as in_file:
-        in_file.write(raw_bytes)
-        in_path = in_file.name
+    # Quick Win: Avoid decoding and re-encoding if already standard 16kHz mono 16-bit PCM WAV
+    already_16k_mono = is_wav16k_mono(raw_bytes)
 
-    raw_wav_path = in_path + ".raw16k.wav"
-    cleaned_wav_path = in_path + ".cleaned.wav"
+    in_path = None
+    raw_wav_path = None
+    cleaned_wav_path = None
 
     try:
-        # Step 1: Standard conversion to 16kHz mono 16-bit WAV to measure raw stats
-        cmd_raw = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            in_path,
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-acodec",
-            "pcm_s16le",
-            raw_wav_path,
-        ]
-        res_raw = subprocess.run(
-            cmd_raw,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=False,
-            check=False,
-        )
-        if res_raw.returncode != 0:
-            err = res_raw.stderr.decode("utf-8", errors="ignore")
-            raise AudioQualityGateError("corrupt_file", f"Failed to decode audio: {err[:200]}")
+        if already_16k_mono:
+            raw_wav_bytes = raw_bytes
+            convert_ms = (time.perf_counter() - t_convert_start) * 1000.0
+        else:
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as in_file:
+                in_file.write(raw_bytes)
+                in_path = in_file.name
+            raw_wav_path = in_path + ".raw16k.wav"
 
-        with open(raw_wav_path, "rb") as rf:
-            raw_wav_bytes = rf.read()
+            cmd_raw = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                in_path,
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-acodec",
+                "pcm_s16le",
+                raw_wav_path,
+            ]
+            res_raw = subprocess.run(
+                cmd_raw,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+                check=False,
+            )
+            if res_raw.returncode != 0:
+                err = res_raw.stderr.decode("utf-8", errors="ignore")
+                raise AudioQualityGateError("corrupt_file", f"Failed to decode audio: {err[:200]}")
 
+            with open(raw_wav_path, "rb") as rf:
+                raw_wav_bytes = rf.read()
+            convert_ms = (time.perf_counter() - t_convert_start) * 1000.0
+
+        # Stage: quality_gates (initial check)
+        t_gate1_start = time.perf_counter()
         raw_stats = compute_audio_stats(raw_wav_bytes)
         raw_dur = raw_stats["duration"]
         raw_peak = raw_stats["peak"]
         raw_rms = raw_stats["rms"]
 
-        # Quality Gate 1: Check raw duration limits
         if raw_dur < MIN_AUDIO_DURATION_SECONDS:
             raise AudioQualityGateError(
                 "too_short",
@@ -244,15 +278,27 @@ def process_audio_with_gates(
                 "too_long",
                 f"Audio recording is {raw_dur:.1f}s, which exceeds {MAX_AUDIO_DURATION_SECONDS}s.",
             )
+        if not clean and raw_peak >= 0.999:
+            raise AudioQualityGateError(
+                "too_loud",
+                f"Audio recording is clipped or too loud (peak={raw_peak:.3f}).",
+            )
+        gate_ms = (time.perf_counter() - t_gate1_start) * 1000.0
 
+        # Stage: clean
+        # Quick Win: Skip cleaning when audio level is already good
+        t_clean_start = time.perf_counter()
+        level_good = is_audio_level_good(raw_stats)
         cleaning_ran = False
-        if settings.AUDIO_CLEAN and clean:
-            # Step 2: Mild cleaning in one ffmpeg call:
-            # - highpass at 80 Hz
-            # - lowpass at 7500 Hz
-            # - light noise reduction with afftdn (nr=10)
-            # - volume levelling with dynaudnorm
-            # - trimming of start and end silence (silenceremove with ~150ms padding kept)
+
+        if settings.AUDIO_CLEAN and clean and not level_good:
+            # Need cleaning filter chain
+            if not raw_wav_path:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as raw_f:
+                    raw_f.write(raw_wav_bytes)
+                    raw_wav_path = raw_f.name
+            cleaned_wav_path = raw_wav_path + ".cleaned.wav"
+
             filter_chain = (
                 "highpass=f=80,"
                 "lowpass=f=7500,"
@@ -292,44 +338,57 @@ def process_audio_with_gates(
         else:
             cleaned_bytes = raw_wav_bytes
 
+        clean_ms = (time.perf_counter() - t_clean_start) * 1000.0
+
+        # Stage: quality_gates (post-cleaning check)
+        t_gate2_start = time.perf_counter()
         cleaned_stats = compute_audio_stats(cleaned_bytes)
         cleaned_dur = cleaned_stats["duration"]
         cleaned_peak = cleaned_stats["peak"]
         cleaned_rms = cleaned_stats["rms"]
 
-        # Log per request: duration, peak, rms before and after, and whether cleaning ran
-        print(
-            f"[Audio Processing] cleaning_ran={cleaning_ran} | "
-            f"raw: dur={raw_dur:.2f}s peak={raw_peak:.3f} rms={raw_rms:.3f} | "
-            f"cleaned: dur={cleaned_dur:.2f}s peak={cleaned_peak:.3f} rms={cleaned_rms:.3f}"
-        )
-
-        # Quality Gate 2: Almost no speech after silence trimming
         if cleaning_ran and cleaned_dur < 0.25:
             raise AudioQualityGateError(
                 "no_speech",
                 f"No speech detected after trimming (duration={cleaned_dur:.2f}s).",
             )
-
-        # Quality Gate 3: Speech level too low after cleaning
         if cleaned_peak < 0.015 or cleaned_rms < 0.005:
             raise AudioQualityGateError(
                 "too_quiet",
                 f"Audio is too quiet after cleaning (peak={cleaned_peak:.3f}, rms={cleaned_rms:.3f}).",
             )
+        gate_ms += (time.perf_counter() - t_gate2_start) * 1000.0
 
         # Save debug clips if enabled
         save_debug_audio_clip(raw_bytes, cleaned_bytes, ext=ext)
 
-        return cleaned_bytes
+        stage_times = {
+            "convert": round(convert_ms, 2),
+            "clean": round(clean_ms, 2),
+            "quality_gates": round(gate_ms, 2),
+        }
+        return cleaned_bytes, cleaned_stats, cleaning_ran, stage_times
 
     finally:
         for temp_p in [in_path, raw_wav_path, cleaned_wav_path]:
-            if os.path.exists(temp_p):
+            if temp_p and os.path.exists(temp_p):
                 try:
                     os.remove(temp_p)
                 except OSError:
                     pass
+
+
+def process_audio_with_gates(
+    raw_bytes: bytes,
+    filename: str = "input.wav",
+    clean: bool = True,
+) -> bytes:
+    """
+    Accepts raw audio bytes (WAV first, webm/ogg/m4a fallback), converts to 16kHz mono 16-bit WAV,
+    evaluates quality gates before returning. Backwards-compatible wrapper.
+    """
+    wav_bytes, _, _, _ = process_voice_audio_timed(raw_bytes, filename=filename, clean=clean)
+    return wav_bytes
 
 
 def to_wav16k_mono(raw_bytes: bytes, filename: str = "input.wav") -> bytes:

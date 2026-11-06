@@ -5,6 +5,7 @@ import csv
 from datetime import datetime, timezone
 import io
 import os
+import time
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -33,20 +34,22 @@ from backend.app.services import (
     turn_service,
 )
 from backend.app.services.broadcast import broadcast_queue_change, broadcast_voice_log
+from backend.app.services.latency_tracker import latency_tracker
 
 router = APIRouter(tags=["Voice & Text Turns"])
 
 
 @router.post("/voice/turn", response_model=TurnResponse)
 def voice_turn(
-    request: Request = None,
     audio: UploadFile = File(..., description="Audio recording file (wav, webm, mp4, etc.)"),
     language: str = Form("te", description="Language preference: 'te', 'en', or 'mix'"),
     session_id: str = Form(..., description="Unique client session identifier"),
     token_id: Optional[int] = Form(None, description="Active token ID if known"),
     noise_label: Optional[str] = Form(None, description="Optional acoustic noise level/type"),
     clean: bool = Form(True, description="Whether to apply audio cleaning (false for raw audio)"),
+    compare: bool = Form(False, description="Whether this turn is in compare mode"),
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """
     Handles a full voice turn:
@@ -61,6 +64,74 @@ def voice_turn(
     token_id = token_id if isinstance(token_id, int) else None
     noise_label = noise_label if isinstance(noise_label, str) else None
     clean = clean if isinstance(clean, bool) else True
+    compare = compare if isinstance(compare, bool) else False
+
+    t_turn_start = time.perf_counter()
+    is_compare_turn = bool(compare or not clean)
+
+    # 0. Check compare mode limit (COMPARE_MAX_CALLS, default 20)
+    if is_compare_turn:
+        compare_limit_err = credit_protection.check_compare_mode_limit(db)
+        if compare_limit_err:
+            compare_max = getattr(settings, "COMPARE_MAX_CALLS", 20)
+            compare_limit_msg = (
+                f"పోలిక మోడ్ పరిమితి ({compare_max} కాల్స్) ముగిసింది. దయచేసి సాధారణ మోడ్ ఉపయోగించండి."
+                if language.startswith("te")
+                else f"Compare mode limit reached ({compare_max} real calls). Please use standard cleaned mode."
+            )
+            total_limit_ms = round((time.perf_counter() - t_turn_start) * 1000.0, 2)
+            limit_stage_times = {
+                "convert": 0.0,
+                "clean": 0.0,
+                "quality_gates": 0.0,
+                "stt": 0.0,
+                "intent": 0.0,
+                "queue_action": 0.0,
+                "reply_choice": 0.0,
+                "tts_or_cache": 0.0,
+                "response_build": 0.0,
+                "total": total_limit_ms,
+            }
+            latency_tracker.record(limit_stage_times)
+            turn_service.log_latency_line(limit_stage_times)
+            try:
+                valid_tok_id = None
+                if token_id and db.query(Token.id).filter(Token.id == token_id).first():
+                    valid_tok_id = token_id
+                vlog = VoiceLog(
+                    token_id=valid_tok_id,
+                    transcript="",
+                    detected_language=language,
+                    intent="LIMIT",
+                    noise_label=noise_label,
+                    ok=False,
+                    cleaned=clean,
+                    is_compare=True,
+                    error="compare_limit",
+                )
+                db.add(vlog)
+                db.commit()
+                broadcast_voice_log()
+            except Exception:
+                pass
+
+            return TurnResponse(
+                transcript="",
+                detected_language=language,
+                intent="LIMIT",
+                reply_text=compare_limit_msg,
+                reply_audio_base64=None,
+                token=None,
+                pending_confirm=False,
+                error=compare_limit_msg,
+                error_code="compare_limit",
+                audio_stats=None,
+                audio_source="none",
+                audio_duration_seconds=None,
+                audio_bytes=None,
+                audio_error="compare_limit",
+                stage_times_ms=limit_stage_times,
+            )
 
     # 1. Check credit protection and demo limits
     client_ip = credit_protection.get_client_ip(request)
@@ -75,6 +146,21 @@ def voice_turn(
     )
     if limit_err:
         limit_msg = credit_protection.get_demo_limit_message()
+        total_limit_ms = round((time.perf_counter() - t_turn_start) * 1000.0, 2)
+        limit_stage_times = {
+            "convert": 0.0,
+            "clean": 0.0,
+            "quality_gates": 0.0,
+            "stt": 0.0,
+            "intent": 0.0,
+            "queue_action": 0.0,
+            "reply_choice": 0.0,
+            "tts_or_cache": 0.0,
+            "response_build": 0.0,
+            "total": total_limit_ms,
+        }
+        latency_tracker.record(limit_stage_times)
+        turn_service.log_latency_line(limit_stage_times)
         try:
             valid_tok_id = None
             if token_id and db.query(Token.id).filter(Token.id == token_id).first():
@@ -110,6 +196,7 @@ def voice_turn(
             audio_duration_seconds=None,
             audio_bytes=None,
             audio_error="demo_limit",
+            stage_times_ms=limit_stage_times,
         )
 
     if not settings.GNANI_API_KEY or not settings.GNANI_API_KEY.strip():
@@ -120,31 +207,63 @@ def voice_turn(
 
     try:
         raw_audio_bytes = audio.file.read()
-        wav_bytes = audio_service.process_audio_with_gates(
+        wav_bytes, audio_stats, cleaning_ran, audio_stage_times = audio_service.process_voice_audio_timed(
             raw_audio_bytes,
             filename=audio.filename or "recording.wav",
             clean=clean,
         )
-        audio_stats = audio_service.compute_audio_stats(wav_bytes)
         credit_protection.record_voice_turn(client_ip, session_id)
+
+        t_stt = time.perf_counter()
         stt_result = gnani.stt(wav_bytes, user_lang=language)
+        stt_ms = (time.perf_counter() - t_stt) * 1000.0
+
         transcript = stt_result.get("transcript", "")
         detected_lang = stt_result.get("language", language)
         raw_file, clean_file = audio_service.get_last_debug_files()
-        cleaning_ran = bool(settings.AUDIO_CLEAN and clean)
+
+        initial_stage_times = {
+            "convert": audio_stage_times.get("convert", 0.0),
+            "clean": audio_stage_times.get("clean", 0.0),
+            "quality_gates": audio_stage_times.get("quality_gates", 0.0),
+            "stt": round(stt_ms, 2),
+        }
     except audio_service.AudioQualityGateError as qe:
         # Phase C/D: Quality gate stopped audio before calling Gnani (saves credits)
         template_lang, tts_lang = turn_service.resolve_languages(language, language)
         reply_text = audio_service.get_friendly_gate_message(qe.error_code, template_lang)
         cache_key = "say_again_te" if template_lang.startswith("te") else "say_again_en"
+
+        t_tts = time.perf_counter()
         audio_res = turn_service._generate_or_get_audio(reply_text, cache_key, tts_lang)
+        tts_ms = (time.perf_counter() - t_tts) * 1000.0
+
         wav_bytes = audio_res.wav_bytes
         a_source = audio_res.audio_source
         a_dur = audio_res.duration_seconds
         a_bytes = audio_res.audio_bytes
         tts_err = audio_res.friendly_err
         a_err = audio_res.audio_error
+
+        t_resp = time.perf_counter()
         b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
+        resp_ms = (time.perf_counter() - t_resp) * 1000.0
+        total_ms = (time.perf_counter() - t_turn_start) * 1000.0
+
+        gate_times = {
+            "convert": 0.0,
+            "clean": 0.0,
+            "quality_gates": 0.0,
+            "stt": 0.0,
+            "intent": 0.0,
+            "queue_action": 0.0,
+            "reply_choice": 0.0,
+            "tts_or_cache": round(tts_ms, 2),
+            "response_build": round(resp_ms, 2),
+            "total": round(total_ms, 2),
+        }
+        latency_tracker.record(gate_times)
+        turn_service.log_latency_line(gate_times)
 
         # Persist audit log so feed displays gate event
         try:
@@ -170,6 +289,7 @@ def voice_turn(
         return TurnResponse(
             transcript="",
             detected_language=template_lang,
+            reply_language="Telugu" if template_lang.startswith("te") else "English",
             intent="UNKNOWN",
             reply_text=reply_text,
             reply_audio_base64=b64_audio,
@@ -182,6 +302,7 @@ def voice_turn(
             audio_duration_seconds=a_dur,
             audio_bytes=a_bytes,
             audio_error=a_err,
+            stage_times_ms=gate_times,
         )
     except gnani.GnaniKeyMissingError as e:
         try:
@@ -218,11 +339,13 @@ def voice_turn(
             err_str = str(e).lower()
             if "credit" in err_str:
                 err_code = "credit_limit"
+            elif "rate" in err_str or "429" in err_str:
+                err_code = "rate_limit"
             elif "voice" in err_str:
                 err_code = "voice_invalid"
             elif "missing_gnani" in err_str or "key is missing" in err_str:
                 err_code = "gnani_key_missing"
-            elif "401" in err_str or "429" in err_str or "rate" in err_str or "gnani" in err_str:
+            elif "401" in err_str or "gnani" in err_str:
                 err_code = "gnani_error"
             else:
                 err_code = "server_error"
@@ -230,7 +353,8 @@ def voice_turn(
         # Raw technical details logged to backend stdout/log only
         print(f"[Turn Router Error] code={err_code} detail={e}")
 
-        friendly_error = error_catalog.get_error_message(err_code, template_lang)
+        catalog_key = "gnani_error" if err_code in ("gnani_error", "rate_limit") else err_code
+        friendly_error = error_catalog.get_error_message(catalog_key, template_lang)
 
         # Persist audit log on unexpected turn error
         try:
@@ -256,6 +380,7 @@ def voice_turn(
         return TurnResponse(
             transcript="",
             detected_language=template_lang,
+            reply_language="Telugu" if template_lang.startswith("te") else "English",
             intent="ERROR",
             reply_text=reply_text,
             reply_audio_base64=b64_audio,
@@ -282,7 +407,24 @@ def voice_turn(
         cleaned=cleaning_ran,
         raw_audio_file=raw_file,
         cleaned_audio_file=clean_file,
+        stage_times=initial_stage_times,
+        turn_start_time=t_turn_start,
+        is_compare=is_compare_turn,
     )
+
+
+@router.get("/dev/latency")
+def dev_latency():
+    """
+    Returns median (p50) and 95th percentile (p95) per stage for the last 50 requests.
+    Enabled only when DEV_ENDPOINTS=true.
+    """
+    if not settings.DEV_ENDPOINTS:
+        raise HTTPException(
+            status_code=403,
+            detail="Developer endpoints are disabled. Set DEV_ENDPOINTS=true in backend/.env",
+        )
+    return latency_tracker.get_stats()
 
 
 @router.post("/text/turn", response_model=TurnResponse)
@@ -500,7 +642,7 @@ def get_audio_lab_turns(db: Session = Depends(get_db)):
     """Returns the last 10 voice turns with duration, peak, rms, cleaned flag and clip links."""
     logs = (
         db.query(VoiceLog)
-        .order_by(VoiceLog.created_at.desc())
+        .order_by(VoiceLog.created_at.desc(), VoiceLog.id.desc())
         .limit(10)
         .all()
     )
@@ -548,6 +690,18 @@ def clear_voice_logs(db: Session = Depends(get_db)):
     db.commit()
     broadcast_queue_change("")
     return MessageResponse(message="Voice logs cleared successfully")
+
+
+@router.get("/audio-compare/status")
+def get_audio_compare_status(db: Session = Depends(get_db)):
+    """Returns usage count and maximum allowed calls for compare mode."""
+    used = credit_protection.count_compare_calls(db)
+    max_calls = getattr(settings, "COMPARE_MAX_CALLS", 20)
+    return {
+        "used": used,
+        "max": max_calls,
+        "limit_reached": bool(used >= max_calls),
+    }
 
 
 @router.get("/audio-compare", response_model=List[AudioCompareResponse])

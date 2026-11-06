@@ -67,7 +67,7 @@
   },
   "gnani_key_missing": {
     "message": {
-      "te": "వాయిస్ సేవ ప్రస్తుతానికి కాన్ఫిగర్ చేయలేదు.",
+      "te": "సర్వర్ వాయిస్ సర్వీస్ కీ అమర్చబడలేదు.",
       "en": "Voice service is currently unconfigured."
     },
     "suggested_action": {
@@ -78,7 +78,7 @@
   },
   "voice_invalid": {
     "message": {
-      "te": "ఎంచుకున్న వాయిస్ సపోర్ట్ చేయబడదు.",
+      "te": "అమర్చిన వాయిస్ సరైనది కాదు.",
       "en": "Configured voice is not supported."
     },
     "suggested_action": {
@@ -89,7 +89,7 @@
   },
   "gnani_error": {
     "message": {
-      "te": "వాయిస్ సేవలో తాత్కాలిక సమస్య ఏర్పడింది.",
+      "te": "వాయిస్ సర్వీస్ తాత్కాలికంగా ఆగిపోయింది.",
       "en": "Voice service encountered a temporary error."
     },
     "suggested_action": {
@@ -111,7 +111,7 @@
   },
   "demo_limit": {
     "message": {
-      "te": "వాయిస్ డెమో పరిమితి ప్రస్తుతానికి పూర్తయింది. దయచేసి టైప్ చేయండి.",
+      "te": "వాయిస్ డెమో పరిమితి పూర్తయింది. దయచేసి టైప్ చేయండి లేదా డెమో వీడియో చూడండి.",
       "en": "Voice demo limit reached for now. Please watch the demo video or try typing."
     },
     "suggested_action": {
@@ -122,7 +122,7 @@
   },
   "network_error": {
     "message": {
-      "te": "క్లినిక్ సర్వర్‌తో కనెక్ట్ కాలేకపోయాము.",
+      "te": "సర్వర్‌తో కనెక్ట్ కాలేకపోయాము. దయచేసి నెట్‌వర్క్ తనిఖీ చేయండి.",
       "en": "Could not connect to the clinic server."
     },
     "suggested_action": {
@@ -133,7 +133,7 @@
   },
   "audio_unavailable": {
     "message": {
-      "te": "సమాధానం ఆడియో ప్రస్తుతం ప్లే చేయలేకపోతున్నాము.",
+      "te": "ఈ ప్రత్యుత్తరానికి ఆడియో అందుబాటులో లేదు.",
       "en": "Spoken audio reply could not be played."
     },
     "suggested_action": {
@@ -144,7 +144,7 @@
   },
   "token_not_found": {
     "message": {
-      "te": "మీ టోకెన్ వివరాలు కనుగొనబడలేదు లేదా క్లియర్ చేయబడింది.",
+      "te": "మీ పేరుతో ఎటువంటి యాక్టివ్ టోకెన్ కనుగొనబడలేదు.",
       "en": "Your token was cleared or not found."
     },
     "suggested_action": {
@@ -166,7 +166,7 @@
   },
   "server_error": {
     "message": {
-      "te": "సర్వర్‌లో ఊహించని సమస్య ఏర్పడింది.",
+      "te": "సర్వర్‌లో తాత్కాలిక లోపం ఏర్పడింది.",
       "en": "Server encountered an unexpected issue."
     },
     "suggested_action": {

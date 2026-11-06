@@ -91,7 +91,7 @@ describe('Patient App Component Tests (Vitest + RTL)', () => {
     // Waiting state
     expect(screen.getByText('#5')).toBeInTheDocument()
     expect(screen.getByText(/WAITING/i)).toBeInTheDocument()
-    expect(screen.getByText(/3/)).toBeInTheDocument()
+    expect(screen.getByText(/Ahead in queue:/i)).toHaveTextContent('3')
 
     cleanup()
 
@@ -432,5 +432,185 @@ describe('Patient App Component Tests (Vitest + RTL)', () => {
     await waitFor(() => {
       expect(screen.getByText(/\[dev: gnani_error\]/i)).toBeInTheDocument()
     })
+  })
+
+  it('11. First-time visitor experience: tagline, empty token state, how-it-works, mic hint, and first-visit banner', async () => {
+    render(<App />)
+
+    // First visit banner is visible when not yet marked visited in localStorage
+    expect(screen.getByText(/Click once anywhere to allow sound, then hold SPACE\./i)).toBeInTheDocument()
+
+    // Default Telugu tagline is rendered under clinic title
+    expect(screen.getByText(/క్లినిక్ టోకెన్ బుక్ చేయడానికి తెలుగు లేదా English లో మాట్లాడండి\./i)).toBeInTheDocument()
+
+    // Empty token state card rendered when no token
+    expect(screen.getByText(/ఇంకా టోకెన్ లేదు\. ఇలా చెప్పి చూడండి: రేపు టోకెన్ కావాలి/i)).toBeInTheDocument()
+
+    // Collapsible How It Works is rendered
+    expect(screen.getByText(/ఇది ఎలా పనిచేస్తుంది \(How it works\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/మేము అర్థం చేసుకుంటాము/i)).toBeInTheDocument()
+    expect(screen.getByText(/సమాధానం వినండి/i)).toBeInTheDocument()
+
+    // Dismiss first-visit banner by clicking anywhere (e.g. switching language to English)
+    const enBtn = screen.getByRole('button', { name: 'English' })
+    await userEvent.click(enBtn)
+
+    // Banner is dismissed and localStorage is updated
+    expect(screen.queryByText(/Click once anywhere to allow sound, then hold SPACE\./i)).not.toBeInTheDocument()
+    expect(localStorage.getItem('vq_visited')).toBe('true')
+
+    // Tagline in English
+    expect(screen.getByText('Speak in Telugu or English to book a clinic token.')).toBeInTheDocument()
+
+    // Empty state in English
+    expect(screen.getByText('No token yet. Try saying: I need a token for tomorrow')).toBeInTheDocument()
+
+    // ONE hint line under mic
+    expect(screen.getByText('Hold SPACE to speak. Earphones with a microphone work best.')).toBeInTheDocument()
+  })
+
+  it('12. Try-saying chip sends text turn without mic and displays English translation under Telugu reply', async () => {
+    let textTurnCalled = false
+    let sentBody = null
+
+    global.fetch = vi.fn((url, options) => {
+      const u = url.toString()
+      if (u.includes('/text/turn')) {
+        textTurnCalled = true
+        sentBody = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              transcript: 'I need a token for tomorrow',
+              reply_text: 'రేపు మీకు టోకెన్ నంబర్ ఒకటి బుక్ అయింది. దయచేసి సమయానికి క్లినిక్‌కి రండి.',
+              reply_audio_base64: null,
+              token: {
+                id: 99,
+                number: 1,
+                date: '2026-11-07',
+                status: 'waiting',
+                ahead_count: 0,
+              },
+            }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ gnani_configured: true, voices_valid: true }),
+      })
+    })
+
+    render(<App />)
+
+    // Switch to English to get the English chips
+    await userEvent.click(screen.getByRole('button', { name: 'English' }))
+
+    // Click the "I need a token for tomorrow" chip
+    const chipBtn = screen.getByRole('button', { name: /"I need a token for tomorrow"/i })
+    await userEvent.click(chipBtn)
+
+    // Verify /text/turn was called without touching microphone
+    await waitFor(() => {
+      expect(textTurnCalled).toBe(true)
+      expect(sentBody.text).toBe('I need a token for tomorrow')
+    })
+
+    // Verify clinic reply text is displayed
+    await waitFor(() => {
+      expect(screen.getByText(/రేపు మీకు టోకెన్ నంబర్ ఒకటి బుక్ అయింది/i)).toBeInTheDocument()
+    })
+
+    // Verify small English translation is rendered under Telugu reply
+    const translation = screen.getByText(/Your token for tomorrow is number 1\. Please come to the clinic on time\./i)
+    expect(translation).toBeInTheDocument()
+    expect(screen.getByText('EN:')).toBeInTheDocument()
+
+    // Verify token card updated
+    expect(screen.getByText('#1')).toBeInTheDocument()
+  })
+
+  it('13. P2-2: Large text and high contrast toggle toggles elder-mode and persists to localStorage', async () => {
+    const { container } = render(<App />)
+
+    // Switch to English
+    await userEvent.click(screen.getByRole('button', { name: 'English' }))
+
+    const elderCheckbox = screen.getByLabelText(/Large text and high contrast/i)
+    expect(elderCheckbox).not.toBeChecked()
+    expect(container.querySelector('.elder-mode')).toBeNull()
+
+    // Toggle on
+    await userEvent.click(elderCheckbox)
+    expect(elderCheckbox).toBeChecked()
+    expect(container.querySelector('.elder-mode')).not.toBeNull()
+    expect(localStorage.getItem('vq_elder_contrast')).toBe('true')
+
+    // Toggle off
+    await userEvent.click(elderCheckbox)
+    expect(elderCheckbox).not.toBeChecked()
+    expect(container.querySelector('.elder-mode')).toBeNull()
+    expect(localStorage.getItem('vq_elder_contrast')).toBe('false')
+  })
+
+  it('14. P2-2: Slower reply toggle persists to localStorage', async () => {
+    render(<App />)
+
+    // Switch to English
+    await userEvent.click(screen.getByRole('button', { name: 'English' }))
+
+    const slowCheckbox = screen.getByLabelText(/Slower reply/i)
+    expect(slowCheckbox).not.toBeChecked()
+
+    // Toggle on
+    await userEvent.click(slowCheckbox)
+    expect(slowCheckbox).toBeChecked()
+    expect(localStorage.getItem('vq_slow_audio')).toBe('true')
+
+    // Toggle off
+    await userEvent.click(slowCheckbox)
+    expect(slowCheckbox).not.toBeChecked()
+    expect(localStorage.getItem('vq_slow_audio')).toBe('false')
+  })
+
+  it('15. P2-2: Plain "Say that again" action replays last reply without making network API calls', async () => {
+    let fetchTurnCount = 0
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/turn')) {
+        fetchTurnCount++
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ gnani_configured: true, voices_valid: true }),
+      })
+    })
+
+    // Pre-populate with saved reply
+    localStorage.setItem(
+      'vq_last_reply',
+      JSON.stringify({
+        transcript: 'token kavali',
+        reply_text: 'Your token number is 5',
+        reply_audio_base64: 'UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
+      })
+    )
+
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'English' }))
+
+    // Say that again button should be present and enabled
+    const sayAgainBtn = screen.getByRole('button', { name: /Say that again/i })
+    expect(sayAgainBtn).toBeInTheDocument()
+    expect(sayAgainBtn).not.toBeDisabled()
+
+    // Click "Say that again"
+    await userEvent.click(sayAgainBtn)
+
+    // Verify no new /turn network calls were triggered
+    expect(fetchTurnCount).toBe(0)
   })
 })

@@ -15,6 +15,32 @@ from backend.app.models import GnaniUsage
 BASE_URL = "https://api.vachana.ai"
 TIMEOUT_SECONDS = 30.0
 
+# Reusable HTTP client with connection pooling and keep-alive
+_http_client: httpx.Client | None = None
+_client_lock = threading.Lock()
+
+
+def get_http_client() -> httpx.Client:
+    """Returns a shared, thread-safe httpx.Client with connection pooling / keep-alive."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        with _client_lock:
+            if _http_client is None or _http_client.is_closed:
+                _http_client = httpx.Client(
+                    timeout=TIMEOUT_SECONDS,
+                    limits=httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=60.0),
+                )
+    return _http_client
+
+
+def close_http_client():
+    """Closes the shared httpx.Client if open."""
+    global _http_client
+    with _client_lock:
+        if _http_client and not _http_client.is_closed:
+            _http_client.close()
+            _http_client = None
+
 # Global lock to guarantee only ONE Gnani request runs at any time
 _gnani_lock = threading.Lock()
 
@@ -118,7 +144,7 @@ def _check_daily_credit_limit(db=None):
         with SessionLocal() as session:
             real_calls_count = _query(session)
 
-    daily_cap = getattr(settings, "GNANI_DAILY_CAP", settings.GNANI_MAX_CALLS)
+    daily_cap = min(getattr(settings, "GNANI_DAILY_CAP", 150), getattr(settings, "GNANI_MAX_CALLS", 150))
     if real_calls_count >= daily_cap:
         raise CreditLimitError(
             f"Gnani daily credit limit reached: {real_calls_count}/{daily_cap} calls used today."
@@ -213,13 +239,13 @@ def stt(wav_bytes: bytes, user_lang: str = "te") -> dict:
     }
 
     def _call():
-        with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
-            return client.post(
-                f"{BASE_URL}/stt/v3",
-                headers=headers,
-                files=files,
-                data=data,
-            )
+        client = get_http_client()
+        return client.post(
+            f"{BASE_URL}/stt/v3",
+            headers=headers,
+            files=files,
+            data=data,
+        )
 
     try:
         response = _execute_with_lock_and_retry(_call)
@@ -293,12 +319,12 @@ def tts(text: str, lang: str, voice: str | None = None) -> bytes:
     }
 
     def _call():
-        with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
-            return client.post(
-                f"{BASE_URL}/api/v1/tts/inference",
-                headers=headers,
-                json=payload,
-            )
+        client = get_http_client()
+        return client.post(
+            f"{BASE_URL}/api/v1/tts/inference",
+            headers=headers,
+            json=payload,
+        )
 
     try:
         from backend.app.services.audio import repair_wav_header, validate_wav

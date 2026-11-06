@@ -11,6 +11,8 @@ from backend.app.routers.voice_test_router import router as voice_test_router
 from backend.app.schemas import HealthResponse
 from backend.app.services.audio import clear_debug_audio_dir, scan_and_clean_audio_cache
 from backend.app.services.connection_manager import manager
+from backend.app.services.gnani import close_http_client
+from backend.app.services.telugu_review import get_review_status
 
 
 @asynccontextmanager
@@ -24,7 +26,17 @@ async def lifespan(app: FastAPI):
     voices_valid, bad_voice = validate_voices()
     if not voices_valid:
         print(f"[Warning] Voice {bad_voice} is not supported by timbre-v2.5. Fix backend/.env")
+    if settings.DEMO_AUTOSEED:
+        try:
+            from backend.app.db import SessionLocal
+            from backend.app.services.queue_service import auto_seed_if_empty
+            with SessionLocal() as db:
+                auto_seed_if_empty(db, count=4)
+        except Exception as seed_err:
+            print(f"[Warning] Failed to autoseed demo tokens: {seed_err}")
     yield
+    # Cleanup persistent HTTP sessions
+    close_http_client()
 
 
 app = FastAPI(
@@ -98,6 +110,8 @@ def get_health():
     )
 
     voices_valid, bad_voice = validate_voices()
+    rev_status = get_review_status()
+    telugu_reviewed = bool(rev_status.get("reviewed_by_native_speaker", False))
 
     return HealthResponse(
         status="ok",
@@ -110,4 +124,11 @@ def get_health():
         bad_voice=bad_voice,
         clinic_name=settings.CLINIC_NAME,
         debug_save_audio=bool(settings.DEBUG_SAVE_AUDIO),
+        telugu_reviewed=telugu_reviewed,
     )
+
+
+@app.get("/telugu-review-status", tags=["Telugu Review"])
+def telugu_review_status_endpoint():
+    """Returns the review and approval status for all canonical Telugu strings."""
+    return get_review_status()

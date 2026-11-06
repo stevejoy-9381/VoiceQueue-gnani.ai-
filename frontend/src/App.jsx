@@ -88,6 +88,21 @@ function saveStoredReply(reply) {
 
 const UI_STRINGS = {
   te: {
+    clinicTagline: 'క్లినిక్ టోకెన్ బుక్ చేయడానికి తెలుగు లేదా English లో మాట్లాడండి.',
+    elderModeLabel: 'పెద్ద అక్షరాలు & ఎక్కువ కాంట్రాస్ట్ (Large text & high contrast)',
+    slowAudioLabel: 'నెమ్మదిగా సమాధానం (Slower reply)',
+    sayAgain: 'మళ్లీ చెప్పండి',
+    tapHintPhone: 'ఫోన్‌లో, మాట్లాడటానికి మైక్‌ని ఒక్కసారి నొక్కండి, ఆపడానికి మళ్లీ నొక్కండి.',
+    trySayingLabel: 'ఇలా చెప్పి చూడండి:',
+    howItWorks: 'ఇది ఎలా పనిచేస్తుంది (How it works)',
+    step1Title: 'మాట్లాడండి',
+    step1Desc: 'తెలుగు, English లేదా Mix లో మాట్లాడటానికి SPACE పట్టుకోండి లేదా మైక్ నొక్కండి.',
+    step2Title: 'మేము అర్థం చేసుకుంటాము',
+    step2Desc: 'మీ టోకెన్ బుకింగ్, స్టేటస్ లేదా రద్దు అభ్యర్థనలను సిస్టమ్ గుర్తిస్తుంది.',
+    step3Title: 'సమాధానం వినండి',
+    step3Desc: 'సహాయకుడు సమాధానం చెబుతాడు మరియు మీ టోకెన్ వెంటనే బుక్ అవుతుంది.',
+    syntheticNote: 'సింథటిక్ డేటాతో చిన్న క్లినిక్‌ల కోసం డెమో. నిజమైన క్లినిక్‌కు కనెక్ట్ చేయబడలేదు.',
+    emptyTokenState: 'ఇంకా టోకెన్ లేదు. ఇలా చెప్పి చూడండి: రేపు టోకెన్ కావాలి',
     cancelConfirmPrompt: 'మీరు టోకెన్ రద్దు చేయాలనుకుంటున్నారా?',
     yesBtn: 'అవును (Yes)',
     noBtn: 'వద్దు (No)',
@@ -118,11 +133,26 @@ const UI_STRINGS = {
     send: 'పంపండి',
   },
   en: {
+    clinicTagline: 'Speak in Telugu or English to book a clinic token.',
+    elderModeLabel: 'Large text and high contrast',
+    slowAudioLabel: 'Slower reply',
+    sayAgain: 'Say that again',
+    tapHintPhone: 'On a phone, tap the mic once to start and once to stop.',
+    trySayingLabel: 'Try saying:',
+    howItWorks: 'How it works',
+    step1Title: 'Speak',
+    step1Desc: 'Hold SPACE or tap the mic to speak in Telugu, English or Mix.',
+    step2Title: 'We understand',
+    step2Desc: 'Our system identifies your request to book, check status, or cancel.',
+    step3Title: 'You hear the answer',
+    step3Desc: 'The assistant speaks the answer and books your token immediately.',
+    syntheticNote: 'A demo for small clinics with synthetic data. Not connected to a real clinic.',
+    emptyTokenState: 'No token yet. Try saying: I need a token for tomorrow',
     cancelConfirmPrompt: 'Do you want to cancel your token?',
     yesBtn: 'Yes',
     noBtn: 'No',
     micHint: 'Hold SPACE to speak. Earphones with a microphone work best.',
-    instruction: 'Tap or hold SPACE to speak',
+    instruction: 'Hold SPACE to speak. Earphones with a microphone work best.',
     recordingHint: 'Recording... (Tap or release SPACE to send)',
     listening: 'Listening...',
     understanding: 'Understanding...',
@@ -148,11 +178,26 @@ const UI_STRINGS = {
     send: 'Send',
   },
   mix: {
+    clinicTagline: 'Clinic token book chesukovadaniki Telugu or English lo matladandi.',
+    elderModeLabel: 'Large text & high contrast',
+    slowAudioLabel: 'Slower reply (నెమ్మదిగా)',
+    sayAgain: 'Say that again (మళ్లీ చెప్పండి)',
+    tapHintPhone: 'Phone lo, tap mic once to start, tap again to stop.',
+    trySayingLabel: 'Try saying:',
+    howItWorks: 'How it works',
+    step1Title: 'Speak',
+    step1Desc: 'Hold SPACE or tap the mic to speak in Telugu, English or Mix.',
+    step2Title: 'We understand',
+    step2Desc: 'Our system identifies your booking, status, or cancellation request.',
+    step3Title: 'You hear the answer',
+    step3Desc: 'The assistant speaks the answer and books your token immediately.',
+    syntheticNote: 'A demo with synthetic data. Not connected to a real clinic.',
+    emptyTokenState: 'No token yet. Try saying: Repu token kavali',
     cancelConfirmPrompt: 'Token cancel cheyala? (Cancel token?)',
     yesBtn: 'Avunu (Yes)',
     noBtn: 'Vaddu (No)',
-    micHint: 'Hold SPACE to speak. Earphones with a mic work best.',
-    instruction: 'Tap or hold SPACE to speak',
+    micHint: 'Hold SPACE to speak. Earphones with a microphone work best.',
+    instruction: 'Hold SPACE to speak. Earphones with a microphone work best.',
     recordingHint: 'Recording... (Tap or release SPACE to send)',
     listening: 'Listening...',
     understanding: 'Understanding...',
@@ -181,49 +226,63 @@ const UI_STRINGS = {
 
 const TRY_SAYING_CHIPS = {
   te: [
-    { label: 'నాకు రేపు టోకెన్ కావాలి', text: 'naaku repu token kavali' },
-    { label: 'నా టోకెన్ స్థితి ఎంత?', text: 'naa token status entha mandi unnaru' },
+    { label: 'రేపు టోకెన్ కావాలి', text: 'repu token kavali' },
+    { label: 'నా వంతు ఎప్పుడు?', text: 'naa token status' },
     { label: 'టోకెన్ రద్దు చేయండి', text: 'token cancel cheyandi' },
   ],
   en: [
     { label: 'I need a token for tomorrow', text: 'I need a token for tomorrow' },
-    { label: 'What is my token status?', text: 'What is my token status?' },
-    { label: 'Cancel my token', text: 'Please cancel my token' },
+    { label: 'When is my turn', text: 'When is my turn' },
+    { label: 'Cancel my token', text: 'Cancel my token' },
   ],
   mix: [
-    { label: 'Repu token book cheyandi', text: 'repu appointment book cheyandi' },
-    { label: 'Token status entha?', text: 'what is my queue status and number' },
-    { label: 'Token cancel cheyyi', text: 'please cancel my token' },
+    { label: 'Repu token kavali', text: 'repu token kavali' },
+    { label: 'When is my turn', text: 'when is my turn' },
+    { label: 'Cancel my token', text: 'token cancel cheyandi' },
   ],
 };
+
+function extractNumberFromReply(text, token) {
+  if (token && token.number) return token.number;
+  const matchDigit = text.match(/\d+/);
+  if (matchDigit) return matchDigit[0];
+  const teNumbers = {
+    'ఒకటి': 1, 'రెండు': 2, 'మూడు': 3, 'నాలుగు': 4, 'ఐదు': 5,
+    'ఆరు': 6, 'ఏడు': 7, 'ఎనిమిది': 8, 'తొమ్మిది': 9, 'పది': 10
+  };
+  for (const [w, n] of Object.entries(teNumbers)) {
+    if (text.includes(w)) return n;
+  }
+  return '1';
+}
 
 function getEnglishTranslation(replyText, token) {
   if (!replyText || !/[\u0C00-\u0C7F]/.test(replyText)) return null;
 
   // Booked
   if (replyText.includes('బుక్ అయింది')) {
-    const isToday = token?.date === new Date().toISOString().split('T')[0];
-    const num = token ? token.number : '';
+    const isToday = replyText.includes('ఈరోజు') || (token?.date === new Date().toISOString().split('T')[0]);
+    const num = extractNumberFromReply(replyText, token);
     return `Your token for ${isToday ? 'today' : 'tomorrow'} is number ${num}. Please come to the clinic on time.`;
   }
   // Turn now
   if (replyText.includes('మీ వంతు వచ్చింది')) {
-    const num = token ? token.number : '';
+    const num = extractNumberFromReply(replyText, token);
     return `Your token number is ${num}. It is your turn now, please proceed to the doctor.`;
   }
   // Waiting ahead
   if (replyText.includes('వేచి ఉన్నారు')) {
-    const num = token ? token.number : '';
+    const num = extractNumberFromReply(replyText, token);
     const ahead = token ? (token.ahead_count ?? 0) : 0;
     return `Your token number is ${num}. There are ${ahead} ${ahead === 1 ? 'patient' : 'patients'} waiting ahead of you.`;
   }
   // Cancel confirm
   if (replyText.includes('రద్దు చేయాలనుకుంటున్నారా')) {
-    const num = token ? token.number : '';
+    const num = extractNumberFromReply(replyText, token);
     return `Are you sure you want to cancel token number ${num}? Please say yes or no.`;
   }
   // Cancelled
-  if (replyText.includes('విజయవంతంగా రద్దు చేయబడింది')) {
+  if (replyText.includes('విజయవంతంగా రద్దు చేయబడింది') || replyText.includes('రద్దు చేయబడింది')) {
     return 'Your token has been cancelled successfully.';
   }
   // Cancel aborted
@@ -231,7 +290,7 @@ function getEnglishTranslation(replyText, token) {
     return 'Token cancellation was cancelled.';
   }
   // No token
-  if (replyText.includes('ఎటువంటి యాక్టివ్ టోకెన్')) {
+  if (replyText.includes('ఎటువంటి యాక్టివ్ టోకెన్') || replyText.includes('కనుగొనబడలేదు')) {
     return 'No active token was found for you.';
   }
   // Greeting
@@ -242,36 +301,40 @@ function getEnglishTranslation(replyText, token) {
   if (replyText.includes('స్పష్టంగా వినిపించలేదు') || replyText.includes('మళ్లీ చెప్పండి')) {
     return 'Sorry, I could not hear you clearly. Please say that again.';
   }
+  // Unknown
+  if (replyText.includes('మీ మాట అర్థం కాలేదు')) {
+    return 'Sorry, I did not understand. Please say book token, status, or cancel.';
+  }
   // Service paused
-  if (replyText.includes('తాత్కాలికంగా నిలిపివేయబడింది')) {
-    return 'Voice service is paused. Please type below or contact reception.';
+  if (replyText.includes('సేవ ప్రస్తుతం అందుబాటులో లేదు') || replyText.includes('తాత్కాలికంగా నిలిపివేయబడింది')) {
+    return 'The service is currently paused. Please try again later.';
   }
   // Audio quality gate messages
-  if (replyText.includes('చాలా తక్కువ సమయం')) {
+  if (replyText.includes('చాలా తక్కువగా ఉంది') || replyText.includes('తక్కువ సమయం')) {
     return 'Speaking time was too short. Please speak clearly for at least one second.';
   }
   if (replyText.includes('చాలా పెద్దది')) {
     return 'Recording was too long. Please speak in a shorter sentence under 30 seconds.';
   }
-  if (replyText.includes('చాలా తక్కువ వాల్యూమ్')) {
-    return 'Audio was too quiet. Please speak louder or move closer to the microphone.';
+  if (replyText.includes('చాలా తక్కువగా వినిపించింది') || replyText.includes('తక్కువ వాల్యూమ్')) {
+    return 'Your voice is too quiet. Please speak louder or bring the microphone closer.';
   }
-  if (replyText.includes('మాటలు ఏవీ స్పష్టంగా లేవు')) {
-    return 'No clear speech detected. Please speak clearly into the microphone.';
+  if (replyText.includes('ఎటువంటి మాటలు వినిపించలేదు') || replyText.includes('మాటలు ఏవీ స్పష్టంగా లేవు')) {
+    return 'No speech was detected. Please speak clearly into the microphone.';
   }
   if (replyText.includes('స్పష్టంగా లేదు లేదా పాడైంది')) {
     return 'Audio file is corrupt or unreadable. Please record again.';
   }
-  if (replyText.includes('ఏమి చేయాలనుకుంటున్నారో')) {
-    return 'Hello, please say what you would like to do.';
+  if (replyText.includes('డెమో పరిమితి')) {
+    return 'Voice demo limit reached for now. Please watch the demo video or try typing.';
   }
 
-  return 'Spoken instructions provided in Telugu.';
+  return 'Spoken reply provided in Telugu.';
 }
 
 export default function App() {
   const isClean = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('clean') === '1';
-  const isDevMode = typeof window !== 'undefined' && window.location.search.includes('dev=1');
+  const isDevMode = typeof window !== 'undefined' && window.location.search.includes('dev=1') && !isClean;
 
   const getPath = () => {
     const p = window.location.pathname;
@@ -313,6 +376,7 @@ export default function App() {
   const [state, setState] = useState('idle'); // 'idle', 'recording', 'processing', 'playing', 'error', 'confirm-cancel'
   const [transcript, setTranscript] = useState('');
   const [replyText, setReplyText] = useState('');
+  const [replyLanguage, setReplyLanguage] = useState('');
   const [replyAudioB64, setReplyAudioB64] = useState('');
   const [token, setToken] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -365,6 +429,75 @@ export default function App() {
   const [selectedMicId, setSelectedMicId] = useState(getSavedMicId);
   const [activeMicName, setActiveMicName] = useState('');
 
+  // P2-2: Elder-friendly mode (large text & high contrast toggle)
+  const [elderContrast, setElderContrast] = useState(() => {
+    try {
+      return localStorage.getItem('vq_elder_contrast') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const handleToggleElderContrast = () => {
+    setElderContrast((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('vq_elder_contrast', String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  // P2-2: Slower reply toggle (0.85x speed with preserved pitch)
+  const [slowAudio, setSlowAudio] = useState(() => {
+    try {
+      return localStorage.getItem('vq_slow_audio') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const handleToggleSlowAudio = () => {
+    setSlowAudio((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('vq_slow_audio', String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  // Keep shared audio element updated with slowAudio preference
+  useEffect(() => {
+    if (sharedAudioRef.current) {
+      sharedAudioRef.current.playbackRate = slowAudio ? 0.85 : 1.0;
+      sharedAudioRef.current.preservesPitch = true;
+      if ('mozPreservesPitch' in sharedAudioRef.current) sharedAudioRef.current.mozPreservesPitch = true;
+      if ('webkitPreservesPitch' in sharedAudioRef.current) sharedAudioRef.current.webkitPreservesPitch = true;
+    }
+  }, [slowAudio]);
+
+  // Requirement 7: First-visit message (shown once, dismissed on click, stored in localStorage)
+  const [showFirstVisitNotice, setShowFirstVisitNotice] = useState(() => {
+    try {
+      return localStorage.getItem('vq_visited') !== 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!showFirstVisitNotice) return;
+    const dismissFirstVisit = () => {
+      try {
+        localStorage.setItem('vq_visited', 'true');
+      } catch (e) {}
+      setShowFirstVisitNotice(false);
+    };
+    window.addEventListener('click', dismissFirstVisit, { once: true });
+    return () => window.removeEventListener('click', dismissFirstVisit);
+  }, [showFirstVisitNotice]);
+
   // Refs for recording & audio
   const recordTimerRef = useRef(null);
   const sharedAudioRef = useRef(null);
@@ -382,11 +515,28 @@ export default function App() {
   const [audioDuration, setAudioDuration] = useState(null);
   const [audioBytes, setAudioBytes] = useState(null);
   const [lastPlayResult, setLastPlayResult] = useState('-');
+  const [stageTimesMs, setStageTimesMs] = useState(null);
 
   // Phase H: Mic check state
   const [micChecking, setMicChecking] = useState(false);
   const [micCountdown, setMicCountdown] = useState(3);
   const [micCheckResult, setMicCheckResult] = useState(null);
+
+  // P2-4: Send raw audio flag (persisted in localStorage)
+  const [sendRawAudio, setSendRawAudio] = useState(() => {
+    try {
+      return localStorage.getItem('vq_send_raw_audio') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  function handleToggleRawAudio(val) {
+    setSendRawAudio(val);
+    try {
+      localStorage.setItem('vq_send_raw_audio', val ? 'true' : 'false');
+    } catch (e) {}
+  }
 
   async function handleRunMicCheck() {
     if (micChecking) return;
@@ -468,6 +618,7 @@ export default function App() {
     if (savedReply) {
       setTranscript(savedReply.transcript || '');
       setReplyText(savedReply.reply_text || '');
+      setReplyLanguage(savedReply.reply_language || (savedReply.reply_text && /[\u0C00-\u0C7F]/.test(savedReply.reply_text) ? 'Telugu' : 'English'));
       setReplyAudioB64(savedReply.reply_audio_base64 || '');
       if (savedReply.token) {
         setToken(savedReply.token);
@@ -742,28 +893,30 @@ export default function App() {
       audio.currentTime = 0;
     } catch (e) {}
 
-    if (currentBlobUrlRef.current) {
+    if (!currentBlobUrlRef.current) {
+      let blobUrl = '';
       try {
-        URL.revokeObjectURL(currentBlobUrlRef.current);
-      } catch (e) {}
-      currentBlobUrlRef.current = null;
+        const blob = b64ToBlob(b64, 'audio/wav');
+        blobUrl = URL.createObjectURL(blob);
+        currentBlobUrlRef.current = blobUrl;
+      } catch (err) {
+        console.error('Failed to convert audio b64 to Blob:', err);
+        setAudioError(getErrorDetails('audio_unavailable', language).message);
+        setLastPlayResult(`Decode error: ${err.message}`);
+        return;
+      }
+
+      audio.src = blobUrl;
+      audio.load();
     }
 
-    // Requirement 8: Convert reply_audio_base64 to a Blob (audio/wav) and use URL.createObjectURL
-    let blobUrl = '';
+    // P2-2: Apply playback rate (0.85x for slower reply) with preservesPitch
     try {
-      const blob = b64ToBlob(b64, 'audio/wav');
-      blobUrl = URL.createObjectURL(blob);
-      currentBlobUrlRef.current = blobUrl;
-    } catch (err) {
-      console.error('Failed to convert audio b64 to Blob:', err);
-      setAudioError(getErrorDetails('audio_unavailable', language).message);
-      setLastPlayResult(`Decode error: ${err.message}`);
-      return;
-    }
-
-    audio.src = blobUrl;
-    audio.load();
+      audio.playbackRate = slowAudio ? 0.85 : 1.0;
+      audio.preservesPitch = true;
+      if ('mozPreservesPitch' in audio) audio.mozPreservesPitch = true;
+      if ('webkitPreservesPitch' in audio) audio.webkitPreservesPitch = true;
+    } catch (e) {}
 
     // Revoke URL when audio ends
     audio.onended = () => {
@@ -885,13 +1038,16 @@ export default function App() {
 
   // Handle server turn response (voice in gives spoken reply + text; typed input gives text only)
   function handleTurnResponse(data, isVoiceTurn = false) {
+    const determinedLang = data.reply_language || (data.reply_text && /[\u0C00-\u0C7F]/.test(data.reply_text) ? 'Telugu' : (data.reply_text ? 'English' : ''));
     setTranscript(data.transcript || '');
     setReplyText(data.reply_text || '');
+    setReplyLanguage(determinedLang);
     setReplyAudioB64(data.reply_audio_base64 || '');
     setAudioSource(data.audio_source || 'none');
     setAudioDuration(data.audio_duration_seconds ?? null);
     setAudioBytes(data.audio_bytes ?? null);
     setAudioServerError(data.audio_error || '');
+    setStageTimesMs(data.stage_times_ms || null);
 
     if (data.token) {
       setToken(data.token);
@@ -902,6 +1058,7 @@ export default function App() {
     saveStoredReply({
       transcript: data.transcript,
       reply_text: data.reply_text,
+      reply_language: determinedLang,
       reply_audio_base64: data.reply_audio_base64,
       token: data.token,
     });
@@ -1068,9 +1225,11 @@ export default function App() {
         formData.append('token_id', token.id.toString());
       }
 
-      // Phase H: Switch to send raw audio (no cleaning)
-      const sendRaw = localStorage.getItem('vq_send_raw_audio') === 'true';
-      formData.append('clean', sendRaw ? 'false' : 'true');
+      // P2-4: Switch to send raw audio (no cleaning)
+      formData.append('clean', sendRawAudio ? 'false' : 'true');
+      if (sendRawAudio) {
+        formData.append('compare', 'true');
+      }
 
       const headers = {};
       try {
@@ -1094,6 +1253,28 @@ export default function App() {
       }
 
       const data = await res.json();
+      // Requirement 5: Start loading audio element immediately as soon as response arrives
+      if (data.reply_audio_base64) {
+        try {
+          if (!sharedAudioRef.current) {
+            sharedAudioRef.current = new Audio();
+          }
+          const audio = sharedAudioRef.current;
+          audio.pause();
+          audio.currentTime = 0;
+          if (currentBlobUrlRef.current) {
+            try { URL.revokeObjectURL(currentBlobUrlRef.current); } catch (e) {}
+            currentBlobUrlRef.current = null;
+          }
+          const blob = b64ToBlob(data.reply_audio_base64, 'audio/wav');
+          const blobUrl = URL.createObjectURL(blob);
+          currentBlobUrlRef.current = blobUrl;
+          audio.src = blobUrl;
+          audio.load();
+        } catch (e) {
+          console.warn('[Audio Preload Warning]:', e);
+        }
+      }
       // Voice turn plays spoken reply automatically
       handleTurnResponse(data, true);
     } catch (err) {
@@ -1181,7 +1362,23 @@ export default function App() {
 
   // Otherwise render the Patient Mobile View at '/'
   return (
-    <div className="app-viewport">
+    <div className={`app-viewport ${elderContrast ? 'elder-mode' : ''}`}>
+      {/* First-visit audio enablement banner (Req 7) */}
+      {showFirstVisitNotice && (
+        <div
+          className="first-visit-banner"
+          role="status"
+          onClick={() => {
+            try {
+              localStorage.setItem('vq_visited', 'true');
+            } catch (e) {}
+            setShowFirstVisitNotice(false);
+          }}
+        >
+          Click once anywhere to allow sound, then hold SPACE.
+        </div>
+      )}
+
       {/* Gnani API Key Missing Banner */}
       {!gnaniConfigured && (
         <div className="patient-limit-banner">
@@ -1208,7 +1405,7 @@ export default function App() {
         <div className="top-nav-row">
           <div className="title-group">
             <h1 className="clinic-title">Demo Clinic</h1>
-            <p className="clinic-tagline">Speak in Telugu or English to book a clinic token</p>
+            <p className="clinic-tagline">{t.clinicTagline}</p>
           </div>
           <button
             type="button"
@@ -1244,9 +1441,34 @@ export default function App() {
         </div>
       </header>
 
-      {/* Try Saying Example Chips */}
+      {/* Elder-Friendly Accessibility Bar (Req 1, 2) */}
+      <section className="accessibility-bar" aria-label="Accessibility options">
+        <label className="a11y-toggle-label" htmlFor="a11y-elder-toggle">
+          <input
+            type="checkbox"
+            id="a11y-elder-toggle"
+            className="a11y-toggle-checkbox"
+            checked={elderContrast}
+            onChange={handleToggleElderContrast}
+          />
+          <span className="a11y-toggle-text">{t.elderModeLabel}</span>
+        </label>
+        <label className="a11y-toggle-label" htmlFor="a11y-slow-toggle">
+          <input
+            type="checkbox"
+            id="a11y-slow-toggle"
+            className="a11y-toggle-checkbox"
+            checked={slowAudio}
+            onChange={handleToggleSlowAudio}
+          />
+          <span className="a11y-toggle-text">{t.slowAudioLabel}</span>
+        </label>
+      </section>
+
+      <main id="main-content" className="patient-main-content">
+      {/* Try Saying Example Chips (Req 2) */}
       <div className="try-saying-container">
-        <span className="try-saying-label">Try saying:</span>
+        <span className="try-saying-label">{t.trySayingLabel}</span>
         <div className="try-saying-chips">
           {(TRY_SAYING_CHIPS[language] || TRY_SAYING_CHIPS.te).map((chip, idx) => (
             <button
@@ -1256,8 +1478,9 @@ export default function App() {
               onClick={() => {
                 setTypedText(chip.text);
                 setShowTypeInput(true);
+                sendTextTurn(chip.text);
               }}
-              title="Click to fill into typing box"
+              title="Click to send as text turn"
             >
               "{chip.label}"
             </button>
@@ -1265,9 +1488,35 @@ export default function App() {
         </div>
       </div>
 
+      {/* Collapsible How It Works (Req 6) */}
+      <details className="how-it-works-details">
+        <summary className="how-it-works-summary">{t.howItWorks}</summary>
+        <div className="how-it-works-content">
+          <div className="how-step">
+            <span className="how-step-num">1</span>
+            <div>
+              <strong>{t.step1Title}:</strong> {t.step1Desc}
+            </div>
+          </div>
+          <div className="how-step">
+            <span className="how-step-num">2</span>
+            <div>
+              <strong>{t.step2Title}:</strong> {t.step2Desc}
+            </div>
+          </div>
+          <div className="how-step">
+            <span className="how-step-num">3</span>
+            <div>
+              <strong>{t.step3Title}:</strong> {t.step3Desc}
+            </div>
+          </div>
+          <p className="how-synthetic-note">{t.syntheticNote}</p>
+        </div>
+      </details>
+
       {/* Confirmation State Banner */}
       {state === 'confirm-cancel' && (
-        <div className="confirm-banner">
+        <div className="confirm-banner" role="alertdialog" aria-label="Confirm token cancellation">
           <p className="confirm-prompt">{t.cancelConfirmPrompt}</p>
           <div className="confirm-actions">
             <button
@@ -1289,7 +1538,7 @@ export default function App() {
       )}
 
       {/* 2. Large Tap-to-Talk / Hold-to-Talk Mic Button */}
-      <section className="mic-section">
+      <section className="mic-section" aria-label="Microphone recording section">
         <div className={`mic-wrapper ${state === 'recording' ? 'recording' : ''}`}>
           <button
             type="button"
@@ -1324,50 +1573,52 @@ export default function App() {
           </div>
         )}
 
-        {/* Phase B: Microphone Selector and Active Device Display */}
-        <div className="mic-device-selector">
-          <span className="mic-device-label">
-            Mic: <strong>{activeMicName || 'Default'}</strong>
-          </span>
-          {micDevices.length > 1 && (
-            <select
-              id="mic-select"
-              className="mic-select-dropdown"
-              value={selectedMicId}
-              onChange={(e) => handleDeviceChange(e.target.value)}
-              aria-label="Select microphone"
+        {/* Phase B: Microphone Selector and Active Device Display (Hidden in ?clean=1 recording mode) */}
+        {!isClean && (
+          <div className="mic-device-selector">
+            <span className="mic-device-label">
+              Mic: <strong>{activeMicName || 'Default'}</strong>
+            </span>
+            {micDevices.length > 1 && (
+              <select
+                id="mic-select"
+                className="mic-select-dropdown"
+                value={selectedMicId}
+                onChange={(e) => handleDeviceChange(e.target.value)}
+                aria-label="Select microphone"
+              >
+                {micDevices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {/* Phase F: Small Test sound link to check speakers */}
+            <button
+              type="button"
+              className="test-sound-link"
+              onClick={playTestSound}
+              title="Play short beep to test speaker"
             >
-              {micDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {/* Phase F: Small Test sound link to check speakers */}
-          <button
-            type="button"
-            className="test-sound-link"
-            onClick={playTestSound}
-            title="Play short beep to test speaker"
-          >
-            {t.testSound}
-          </button>
+              {t.testSound}
+            </button>
 
-          {/* Phase H: Mic check button (3s check, no Gnani call) */}
-          <button
-            type="button"
-            className="mic-check-link"
-            onClick={handleRunMicCheck}
-            disabled={micChecking || state === 'recording'}
-            title="Record 3 seconds to check mic volume and noise level"
-          >
-            {micChecking ? `🎙️ Checking (${micCountdown}s)...` : '🎙️ Mic check'}
-          </button>
-        </div>
+            {/* Phase H: Mic check button (3s check, no Gnani call) */}
+            <button
+              type="button"
+              className="mic-check-link"
+              onClick={handleRunMicCheck}
+              disabled={micChecking || state === 'recording'}
+              title="Record 3 seconds to check mic volume and noise level"
+            >
+              {micChecking ? `🎙️ Checking (${micCountdown}s)...` : '🎙️ Mic check'}
+            </button>
+          </div>
+        )}
 
-        {/* Phase H: Mic Check Verdict Card */}
-        {micCheckResult && (
+        {/* Phase H: Mic Check Verdict Card (Hidden in ?clean=1 recording mode) */}
+        {!isClean && micCheckResult && (
           <div className={`mic-check-card ${micCheckResult.verdict.toLowerCase().replace(/\s+/g, '-')}`}>
             <div className="mic-check-header">
               <span className="mic-check-verdict">
@@ -1383,18 +1634,19 @@ export default function App() {
               </button>
             </div>
             <div className="mic-check-stats">
+              <span>Level (RMS): {micCheckResult.rms}</span>
               <span>Peak: {micCheckResult.peak}</span>
-              <span>RMS: {micCheckResult.rms}</span>
             </div>
             <p className="mic-check-advice">
               {micCheckResult.verdict === 'Good' && 'Microphone level is clear and ready to use.'}
               {micCheckResult.verdict === 'Too quiet' && 'I can hardly hear you. Speak louder or move the mic closer (15-20 cm).'}
-              {micCheckResult.verdict === 'Too noisy' && 'High noise or clipping. Use earphones or move to a quieter room.'}
+              {micCheckResult.verdict === 'Too loud' && 'Microphone input is clipping. Lower your input volume or move slightly away.'}
+              {micCheckResult.verdict === 'Too noisy' && 'High background noise detected. Use earphones or move to a quieter room.'}
             </p>
           </div>
         )}
 
-        <div className="mic-status">
+        <div className="mic-status" aria-live="polite" aria-atomic="true">
           {!gnaniConfigured ? (
             <p className="status-text paused-hint">Gnani API key missing — Use typing below</p>
           ) : isLimitReached ? (
@@ -1402,13 +1654,16 @@ export default function App() {
           ) : (
             <>
               {state === 'recording' && (
-                <p className="status-text recording-text">
-                  {t.listening} {recordingSeconds.toFixed(1)}s / 10.0s
-                </p>
+                <p className="status-text recording-text">{t.listening}</p>
               )}
-              {state === 'processing' && <p className="status-text">{t.understanding}</p>}
-              {state === 'playing' && <p className="status-text">{t.speakingReply}</p>}
-              {state === 'idle' && <p className="status-text instruction-text">{t.instruction}</p>}
+              {state === 'processing' && <p className="status-text processing-text">{t.understanding}</p>}
+              {state === 'playing' && <p className="status-text playing-text">{t.speakingReply}</p>}
+              {state === 'idle' && (
+                <>
+                  <p className="status-text mic-hint-line">{t.micHint}</p>
+                  <p className="tap-phone-note">{t.tapHintPhone}</p>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1441,26 +1696,37 @@ export default function App() {
       </section>
 
       {/* 3. 'You said' Box */}
-      <section className="card card-transcript">
+      <section className="card card-transcript" aria-label="Speech transcript">
         <h2 className="card-label">{t.youSaid}</h2>
         <p className="card-content">
           {transcript || <span className="placeholder-text">{t.youSaidPlaceholder}</span>}
         </p>
       </section>
 
-      {/* 4. 'Reply' Box with Replay Button */}
-      <section className="card card-reply">
+      {/* 4. 'Reply' Box with Replay Button and Plain 'Say that again' */}
+      <section className="card card-reply" aria-live="polite" aria-label="Clinic reply">
         <div className="card-header-row">
           <h2 className="card-label">{t.clinicReply}</h2>
-          <button
-            type="button"
-            className="replay-btn"
-            onClick={handleReplay}
-            disabled={!replyAudioB64 || state === 'processing'}
-            title="Replay reply voice"
-          >
-            {t.replay}
-          </button>
+          <div className="reply-actions-row">
+            <button
+              type="button"
+              className="replay-btn"
+              onClick={handleReplay}
+              disabled={!replyAudioB64 || state === 'processing'}
+              title="Replay reply voice"
+            >
+              {t.replay}
+            </button>
+            <button
+              type="button"
+              className="say-again-btn"
+              onClick={handleReplay}
+              disabled={!replyAudioB64 || state === 'processing'}
+              title="Say that again"
+            >
+              🔊 {t.sayAgain}
+            </button>
+          </div>
         </div>
         <p className="card-content">
           {replyText || <span className="placeholder-text">{t.replyPlaceholder}</span>}
@@ -1468,6 +1734,11 @@ export default function App() {
         {getEnglishTranslation(replyText, token) && (
           <p className="reply-translation">
             <span className="translation-tag">EN:</span> {getEnglishTranslation(replyText, token)}
+          </p>
+        )}
+        {replyText && replyLanguage && (
+          <p className="reply-language-indicator" data-testid="reply-language-indicator">
+            Reply language: {replyLanguage}
           </p>
         )}
 
@@ -1491,6 +1762,7 @@ export default function App() {
                 setPlayBlocked(false);
                 playBase64Audio(replyAudioB64);
               }}
+              aria-label="Tap to hear reply audio"
             >
               {t.tapToHear}
             </button>
@@ -1521,6 +1793,62 @@ export default function App() {
             [Dev Audio] source: {audioSource} | duration: {audioDuration != null ? audioDuration.toFixed(2) + 's' : '-'} | bytes: {audioBytes != null ? audioBytes : '-'} | play(): {lastPlayResult}{audioServerError ? ` | server: ${audioServerError}` : ''}
           </div>
         )}
+
+        {/* P2-3: Latency stage breakdown, visible only with ?dev=1 */}
+        {isDevMode && stageTimesMs && (
+          <div
+            className="dev-latency-line"
+            style={{
+              marginTop: '6px',
+              fontSize: '0.78rem',
+              color: '#6F4E37',
+              opacity: 0.9,
+              fontFamily: 'monospace',
+              wordBreak: 'break-all',
+            }}
+          >
+            [Dev Latency] total: {stageTimesMs.total != null ? stageTimesMs.total + 'ms' : '-'} | convert: {stageTimesMs.convert != null ? stageTimesMs.convert + 'ms' : '-'} | clean: {stageTimesMs.clean != null ? stageTimesMs.clean + 'ms' : '-'} | quality: {stageTimesMs.quality_gates != null ? stageTimesMs.quality_gates + 'ms' : '-'} | stt: {stageTimesMs.stt != null ? stageTimesMs.stt + 'ms' : '-'} | intent: {stageTimesMs.intent != null ? stageTimesMs.intent + 'ms' : '-'} | queue: {stageTimesMs.queue_action != null ? stageTimesMs.queue_action + 'ms' : '-'} | reply: {stageTimesMs.reply_choice != null ? stageTimesMs.reply_choice + 'ms' : '-'} | tts: {stageTimesMs.tts_or_cache != null ? stageTimesMs.tts_or_cache + 'ms' : '-'} | resp: {stageTimesMs.response_build != null ? stageTimesMs.response_build + 'ms' : '-'}
+          </div>
+        )}
+
+        {/* P2-4: Switch 'Send raw audio' directly available in dev mode */}
+        {isDevMode && (
+          <div
+            className="dev-raw-toggle"
+            style={{
+              marginTop: '6px',
+              padding: '6px 10px',
+              background: sendRawAudio ? '#FEF3C7' : '#F7F5F0',
+              border: `1px solid ${sendRawAudio ? '#C8893B' : '#E0D6CC'}`,
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              color: '#4A3525',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>
+              <strong>⚙️ Send raw audio (clean=false):</strong> {sendRawAudio ? 'ON (Raw audio)' : 'OFF (Cleaned)'}
+            </span>
+            <button
+              type="button"
+              onClick={() => handleToggleRawAudio(!sendRawAudio)}
+              style={{
+                background: sendRawAudio ? '#9E2A2B' : '#5C3D2E',
+                color: '#FFF',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              {sendRawAudio ? 'Switch to Cleaned' : 'Switch to Raw'}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* 5. Token Card */}
@@ -1541,8 +1869,8 @@ export default function App() {
           {tokenClearedNotice}
         </section>
       )}
-      {token && (
-        <section className={`card token-card status-${token.status}`}>
+      {token ? (
+        <section className={`card token-card status-${token.status}`} aria-label="Booked token status card">
           <div className="token-header">
             <span className="token-day">{token.date === new Date().toISOString().split('T')[0] ? t.today : t.tomorrow}</span>
             <span className={`token-badge badge-${token.status}`}>{token.status.toUpperCase()}</span>
@@ -1563,10 +1891,16 @@ export default function App() {
             )}
           </div>
         </section>
+      ) : (
+        !tokenClearedNotice && (
+          <section className="card card-empty-token" aria-label="No token booked yet">
+            <p className="empty-token-text">{t.emptyTokenState}</p>
+          </section>
+        )
       )}
 
       {/* 6. 'Type instead' Accordion / Link */}
-      <section className="type-section">
+      <section className="type-section" aria-label="Text typing section">
         <button
           type="button"
           className="type-toggle-btn"
@@ -1585,12 +1919,14 @@ export default function App() {
           >
             <input
               type="text"
+              id="type-text-input"
               className="type-input"
               placeholder={t.typePlaceholder}
               value={typedText}
               onChange={(e) => setTypedText(e.target.value)}
               disabled={state === 'processing'}
               autoFocus={isLimitReached}
+              aria-label="Type message"
             />
             <button
               type="submit"
@@ -1602,6 +1938,7 @@ export default function App() {
           </form>
         )}
       </section>
+      </main>
 
       {/* 7. Footer Link to /about and /audio-lab if dev=1 */}
       <footer className="app-footer">

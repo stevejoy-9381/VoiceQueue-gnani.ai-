@@ -60,6 +60,42 @@ test.describe('Visual Screenshots & Accessibility (axe-core)', () => {
       })
     })
 
+    await page.route('**/review-status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fully_reviewed: true,
+          reviewed_count: 50,
+          total_strings: 50,
+          pending_count: 0,
+        }),
+      })
+    })
+
+    await page.route('**/voice-tests', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: 1, text: 'repu token kavali', language: 'te-IN', noise_level: 'quiet', accuracy: 'high', ok: true },
+        ]),
+      })
+    })
+
+    await page.route('**/voice-tests/summary', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total: 45,
+          passed: 45,
+          accuracy_percent: 100.0,
+          languages: { 'te-IN': 25, 'en-IN': 20 },
+        }),
+      })
+    })
+
     await page.routeWebSocket('**/ws/queue', () => {})
   })
 
@@ -91,7 +127,35 @@ test.describe('Visual Screenshots & Accessibility (axe-core)', () => {
     await page.screenshot({ path: path.join(SCREENS_DIR, 'dashboard_1366x768.png'), fullPage: true })
   })
 
-  test('3. Telugu text renders properly on patient page (screenshot)', async ({ page }) => {
+  test('3. Tests page screenshots at 360x740 and 1366x768', async ({ page }) => {
+    // Mobile Viewport (360x740)
+    await page.setViewportSize({ width: 360, height: 740 })
+    await page.goto('/tests')
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: path.join(SCREENS_DIR, 'tests_360x740.png'), fullPage: true })
+
+    // Desktop Viewport (1366x768)
+    await page.setViewportSize({ width: 1366, height: 768 })
+    await page.goto('/tests')
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: path.join(SCREENS_DIR, 'tests_1366x768.png'), fullPage: true })
+  })
+
+  test('4. About page screenshots at 360x740 and 1366x768', async ({ page }) => {
+    // Mobile Viewport (360x740)
+    await page.setViewportSize({ width: 360, height: 740 })
+    await page.goto('/about')
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: path.join(SCREENS_DIR, 'about_360x740.png'), fullPage: true })
+
+    // Desktop Viewport (1366x768)
+    await page.setViewportSize({ width: 1366, height: 768 })
+    await page.goto('/about')
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: path.join(SCREENS_DIR, 'about_1366x768.png'), fullPage: true })
+  })
+
+  test('5. Telugu text renders properly on patient page (screenshot)', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 740 })
     await page.goto('/')
     // Ensure Telugu language is selected

@@ -14,6 +14,7 @@ class HealthResponse(BaseModel):
     bad_voice: Optional[str] = None
     clinic_name: Optional[str] = None
     debug_save_audio: bool = False
+    telugu_reviewed: bool = False
 
 
 class TokenCreate(BaseModel):
@@ -56,6 +57,7 @@ class TextTurnRequest(BaseModel):
 class TurnResponse(BaseModel):
     transcript: str
     detected_language: str
+    reply_language: Optional[str] = None
     intent: str
     reply_text: str
     reply_audio_base64: Optional[str] = None  # base64 encoded WAV audio bytes or null
@@ -68,6 +70,7 @@ class TurnResponse(BaseModel):
     audio_duration_seconds: Optional[float] = None
     audio_bytes: Optional[int] = None
     audio_error: Optional[str] = None
+    stage_times_ms: Optional[dict[str, float]] = None
 
 
 class RetryAudioRequest(BaseModel):
@@ -81,6 +84,7 @@ class RetryAudioResponse(BaseModel):
     audio_duration_seconds: Optional[float] = None
     audio_bytes: Optional[int] = None
     audio_error: Optional[str] = None
+    stage_times_ms: Optional[dict[str, float]] = None
 
 
 class VoiceLogItem(BaseModel):

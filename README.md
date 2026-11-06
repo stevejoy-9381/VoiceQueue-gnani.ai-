@@ -1,136 +1,205 @@
 # VoiceQueue
 
-> **Voice-first clinic token and queue management system for Demo Clinic**  
-> Supporting Telugu (తెలుగు), English, and Mix (Telugu + English) using Gnani AI REST speech models.
+> **Voice-first outpatient clinic token and queue management assistant for patients speaking Telugu, English, or conversational Mix.**
+
+[![CI / CD Pipeline](https://github.com/stevejoy-9381/VoiceQueue-gnani.ai-/actions/workflows/ci.yml/badge.svg)](https://github.com/stevejoy-9381/VoiceQueue-gnani.ai-/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-brightgreen.svg)](https://www.python.org/)
+[![React 18](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev/)
+[![Gnani.ai](https://img.shields.io/badge/Speech-Gnani.ai%20Prisma%20%26%20Timbre-orange.svg)](https://docs.gnani.ai)
 
 ---
 
 ## 1. The Problem
 
-In Indian outpatient (OPD) clinics, walk-in token queues are often chaotic, crowded, and stressful. Patients who cannot read or write, as well as elderly visitors, struggle with digital touchscreens, printed paper tokens, and complex smartphone apps. 
+In Indian outpatient departments (OPDs) and community clinics, token booking and waiting lines are chaotic, noisy, and stressful:
+- **Digital divide & literacy barriers**: Patients who cannot read, write, or navigate touchscreen kiosks are forced to stand in long physical lines.
+- **Paper token slips**: Hand-written paper slips get lost, damaged, or miscalled over clinic loudspeakers.
+- **Language exclusion**: Standard hospital management systems only operate in formal English or complex menus, ignoring colloquial spoken Telugu and bilingual code-switching (Telugu + English).
+- **Elderly discomfort**: Small screen fonts, subtle tap targets, and rapid robotic synthesized voices make digital self-service unusable for older visitors.
 
-**VoiceQueue** solves this with a **voice-first, mobile-accessible assistant**. Patients simply hold a single microphone button and speak in their natural language (Telugu, English, or conversational Mix) to book a token, check how many patients are ahead in line, or cancel an appointment. Spoken replies are delivered back instantly with all numbers pronounced as natural words.
-
----
-
-## 2. Core Features
-
-- **Patient Mobile App (`/`)**:
-  - High-contrast, mobile-first design with 56px+ touch targets and accessible Noto Sans fonts.
-  - Large 110px hold-to-talk microphone button with a pulsing animation ring and 8-second auto-stop timer.
-  - Instant audio replay without re-querying the API.
-  - Real-time token status card polling position updates every 5 seconds.
-  - 60-second cancel confirmation memory (*"Are you sure?"* -> Yes/No buttons).
-  - Automatic fallback to typed input if microphone permission is denied or daily credits are exhausted.
-- **Clinic Live Dashboard (`/clinic`)**:
-  - Real-time operational overview for receptionists and doctors.
-  - Auto-reconnecting WebSocket (`/ws/queue`) streaming instantaneous queue changes.
-  - *Today* and *Tomorrow* tabbed views.
-  - *Now in Consultation* card with single-click *Mark Done* and *No-Show* actions.
-  - Ordered *Waiting* queue with glowing highlight animation on new tokens.
-  - Live *Voice Activity* telemetry feed showing transcripts, intents, and timestamps.
-  - Instant demo management: *Call Next Patient*, *Seed Demo Patients*, and *Reset Demo Queue*.
-- **Credits Meter & Safety Guard**:
-  - Real-time dashboard meter (`Gnani calls: 42/300`).
-  - Color-coded safety thresholds: normal teal, amber at 80%, red at 100%.
-  - Safety shut-off blocking external API calls when the daily limit is reached.
-  - Warning banner on all screens: *"Voice is paused to save credits. Typing still works."*
-- **Testing & Noise Telemetry Suite (`/tests`)**:
-  - Built-in empirical trial logger to record voice recognition accuracy across background noise conditions (*Quiet*, *Fan/AC*, *Street/Traffic*).
-  - Live summary matrix of pass rates grouped by language and noise level.
-  - 1-click **Export CSV** for offline analysis.
-  - Automated offline text benchmark suite running 45 standardized phrases with 100.0% accuracy.
-- **Zero-Digit Phonetic Speech**:
-  - Numbers (0–99) in synthesized audio responses are rendered strictly into phonetic words (e.g., Telugu *"పదకొండు"*, English *"eleven"*). Raw numeric digits are never sent to the voice synthesizer.
-- **Pre-Cached Prompts**:
-  - Common fixed audio phrases (greetings, confirmations, service paused, repeat prompts) are pre-generated to save latency and preserve API credits.
+**VoiceQueue** eliminates these barriers with an intuitive, accessible **voice-first assistant**. Patients tap or hold a single microphone button, speak naturally in Telugu, English, or conversational Mix, and receive instant spoken and visual confirmations.
 
 ---
 
-## 3. Architecture
+## 2. Who It Is For
 
-```text
- +-------------------------------------------------------------------------------+
- |                             VoiceQueue Architecture                           |
- +-------------------------------------------------------------------------------+
- |                                                                               |
- |   PATIENT BROWSER (Mobile-First UI)              CLINIC DASHBOARD (Desktop)   |
- |   Route: /                                       Route: /clinic, /tests       |
- |   - Hold-to-Talk (MediaRecorder webm)            - Live WebSocket Queue       |
- |   - Audio Replay (Base64 audio/wav)              - Consultation & Queue Ops   |
- |   - Token Card & Cancel Confirmation             - Live Voice Activity Feed   |
- |   - Auto Typed Input Fallback                    - Credits Meter & Telemetry  |
- |            |                                                ^                 |
- |      HTTP POST /voice/turn, /text/turn                      | WebSocket       |
- |            |                                                | /ws/queue       |
- |            v                                                v                 |
- |   +-----------------------------------------------------------------------+   |
- |   |                         FASTAPI BACKEND                               |   |
- |   |                                                                       |   |
- |   |  +--------------------+     +------------------+   +---------------+  |   |
- |   |  | ffmpeg Audio Guard | --> |   Rule-based NLU |   | Queue Service |  |   |
- |   |  | (16kHz Mono WAV)   |     | (Intent/Day slot)|   | (Tokens DB)   |  |   |
- |   |  +--------------------+     +------------------+   +---------------+  |   |
- |   |            |                         |                    |           |   |
- |   |            v                         v                    v           |   |
- |   |  +-----------------------------------------------------------------+  |   |
- |   |  |                   Gnani Speech Service Layer                    |  |   |
- |   |  | - Concurrency Lock (1 request at a time)                        |  |   |
- |   |  | - Daily Credit Limit Meter (Amber @ 80%, Red @ 100%)            |  |   |
- |   |  | - Pre-Cached Prompt Audio Cache (Telugu & English)              |  |   |
- |   |  | - Spoken Words Converter (0-99 phonetic numbers, no raw digits) |  |   |
- |   |  +-----------------------------------------------------------------+  |   |
- |   |            |                                              |           |   |
- |   +------------|----------------------------------------------|-----------+   |
- |                |                                              |               |
- |                v                                              v               |
- |      +--------------------+                         +-------------------+     |
- |      |  Prisma v3.0 (STT) |                         | Timbre v2.5 (TTS) |     |
- |      | (te-IN / en-IN)    |                         | (VOICE_TE/VOICE_EN|     |
- |      +--------------------+                         +-------------------+     |
- |                ^                                              ^               |
- |                +------------- Gnani AI Cloud -----------------+               |
- |                                                                               |
- +-------------------------------------------------------------------------------+
+- **Patients (Walk-in & OPD Visitors)**:
+  - Can book a token for *Today* or *Tomorrow* in under 20 seconds without reading instructions.
+  - Can check their queue position anytime (*"How many patients are ahead of me?"*).
+  - Can cancel an appointment with a safe 60-second confirmation flow.
+  - Can enable **Elder-Friendly Mode** (large text, high-contrast coffee-cream palette, 0.85x slower speech, and 64px+ touch targets).
+- **Receptionists & Front-Desk Staff**:
+  - Live operational dashboard with real-time WebSocket token streaming.
+  - Single-click or keyboard-driven queue progression (**N** for *Call next*, **D** for *Mark done*).
+  - Live Voice Activity Feed showing masked speech transcripts and intent classifications.
+- **Clinics & Healthcare Providers**:
+  - Zero Protected Health Information (PHI) exposure — built-in privacy masking for phone numbers and names.
+  - Strict daily API cost caps and reserve limits to prevent unexpected billing.
+
+---
+
+## 3. Core Features
+
+### Patient Experience (`/`)
+- **Hold-to-Talk & Tap-to-Talk**: Hold SPACE on desktop or tap once to start/stop on mobile.
+- **3 "Try Saying" Suggestion Chips**: Contextual chips in Telugu, English, or Mix to get started in one click without using the microphone.
+- **Subtitled Spoken Replies**: Every Telugu voice response includes a built-in English translation.
+- **Elder-Friendly Mode**:
+  - `Large text & high contrast`: +30% larger fonts, high-contrast dark coffee text on cream background.
+  - `Slower reply`: Plays voice replies at 0.85x speed with pitch preservation enabled.
+  - 64px+ tap targets for Replay and Yes/No confirm buttons.
+  - Single-tap "Say that again" button to replay the last spoken reply without any API call.
+- **Built-in Mic Check**: 3-second recording tool measuring RMS audio levels, peak volume, and ambient noise without consuming API credits.
+- **Zero-Digit Phonetic Numbers**: Spoken numbers (0–99) are converted into natural phonetic words (e.g., Telugu *"పదకొండు"*, English *"eleven"*). Raw numeric digits are never sent to the voice synthesizer.
+- **Pre-Cached Prompts**: Common greetings, confirmations, and pauses are pre-rendered into high-quality WAV files, eliminating latency and preserving API quota.
+
+### Clinic Dashboard (`/clinic`)
+- **Live WebSocket Stream (`/ws/queue`)**: Instant synchronization of token bookings, consultations, and cancellations across all screens.
+- **Tabbed Views**: Seamless switching between *Today* and *Tomorrow* queues.
+- **Summary Counters**: Live cards for *Waiting*, *In Consultation*, *Done Today*, and *Cancelled*.
+- **Keyboard Shortcuts**: Press **N** to call the next patient, **D** to complete a consultation, and **Shift+R** to reset and seed demo data.
+- **Presentation Mode (`?present=1`) & Clean Video Mode (`?clean=1`)**: Automatically hides developer badges, credit meters, and technical labels for screen recordings and clean presentations.
+
+### Telemetry & Audio Lab (`/tests` & `/audio-lab?dev=1`)
+- **Noise Telemetry Matrix**: Live testing dashboard logging speech recognition accuracy across background noise profiles (*Quiet*, *Fan/AC*, *Street/Traffic*).
+- **Audio Comparison Lab**: Side-by-side playback and transcript comparison of raw vs. cleaned audio with CSV export.
+- **Monotonic Latency Profiler (`?dev=1`)**: Precise stage-by-stage timing breakdown (audio conversion, noise cleaning, STT, NLU, queue action, TTS).
+
+---
+
+## 4. Supported Languages
+
+VoiceQueue provides native support for three language modes:
+
+1. **Telugu (`te-IN`)**:
+   - Synthesized using Gnani Timbre voice **`Lavanya`**.
+   - Spoken numbers rendered in Telugu script words (*ఒకటి, రెండు, మూడు...*).
+   - Fully reviewed against native colloquial phrasing rules.
+2. **English (`en-IN`)**:
+   - Synthesized using Gnani Timbre voice **`Trupti`**.
+   - Spoken numbers rendered in English words (*one, two, three...*).
+3. **Mix Mode (Telugu + English Code-Switching)**:
+   - Understands hybrid sentences with English nouns and Telugu verbs (e.g., *"repu clinic appointment book cheyyandi"*, *"my token status cheppandi"*).
+   - Automatically detects dominant language by counting Telugu Unicode characters vs. Latin words (excluding loanwords like *token*, *clinic*, *doctor*, *appointment*).
+   - Employs Gnani Prisma's language detector as an intelligent tie-breaker.
+
+---
+
+## 5. Architecture
+
+```mermaid
+flowchart TD
+    subgraph Clients["Frontend Clients (React 18 + Vite)"]
+        Patient["Patient Voice App (Mobile/Desktop)\nRoute: /"]
+        Dashboard["Clinic Live Dashboard\nRoute: /clinic"]
+        Tests["Noise Telemetry & About\nRoute: /tests, /about"]
+    end
+
+    subgraph Backend["FastAPI Backend (Python 3.11)"]
+        Router["API Gateway / Routers\n/voice/turn, /text/turn, /queue"]
+        WS["WebSocket Broadcast Manager\n/ws/queue"]
+        
+        subgraph Pipeline["Voice Processing Pipeline"]
+            AudioGuard["FFmpeg Audio Guard\n(16kHz Mono WAV, Bandpass & Level Check)"]
+            QualityGate["Quality Gates\n(RMS, Duration, Silence Detection)"]
+            RuleNLU["Rule-based Intent Parser\n(BOOK, STATUS, CANCEL, Day Slot)"]
+            QueueSvc["Queue & Token Engine\n(Position Math, Auto-Seed)"]
+            NumConverter["Phonetic Number Converter\n(0-99 Spoken Words)"]
+            CacheLayer["Pre-Cached Audio Prompts\n(Telugu & English WAV Cache)"]
+            CreditMeter["Credit Protection & Safety Guard\n(Daily Cap & Reserve Limits)"]
+        end
+
+        DB[(SQLite / PostgreSQL\nvoicequeue.db)]
+    end
+
+    subgraph GnaniCloud["Gnani.ai Speech Cloud"]
+        Prisma["Gnani Prisma v3.0 (STT)\nte-IN / en-IN Acoustic Models"]
+        Timbre["Gnani Timbre v2.5 (TTS)\nVoices: Lavanya (te) & Trupti (en)"]
+    end
+
+    Patient -->|"HTTP POST /voice/turn (webm audio)"| Router
+    Patient -->|"HTTP POST /text/turn"| Router
+    Dashboard <-->|"WebSocket /ws/queue"| WS
+    Dashboard -->|"HTTP POST /queue/next, /demo/seed"| Router
+
+    Router --> Pipeline
+    Pipeline --> AudioGuard
+    AudioGuard --> QualityGate
+    QualityGate -->|"STT Request (16kHz WAV)"| Prisma
+    Prisma -->|"Masked Transcript"| RuleNLU
+    RuleNLU --> QueueSvc
+    QueueSvc <--> DB
+    QueueSvc --> WS
+    QueueSvc --> NumConverter
+    NumConverter --> CacheLayer
+    CacheLayer -->|"Cache Hit (0 credits)"| Router
+    CacheLayer -->|"Cache Miss (Check Limit)"| CreditMeter
+    CreditMeter -->|"Synthesize Spoken Words"| Timbre
+    Timbre -->|"16kHz WAV Audio"| Router
 ```
 
 ---
 
-## 4. Setup & Running
+## 6. AI Models & Versions Used
+
+| Capability | Model / Service | Version | Configuration / Voice | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **Speech-to-Text (STT)** | [Gnani Prisma](https://docs.gnani.ai) | `v3.0` | `te-IN`, `en-IN` (16kHz mono WAV) | Real-time Indian accent speech recognition. |
+| **Text-to-Speech (TTS)** | [Gnani Timbre](https://docs.gnani.ai) | `v2.5` | `Lavanya` (Telugu), `Trupti` (English) | High-fidelity neural voice synthesis with natural Indic prosody. |
+| **Intent Understanding** | Deterministic NLU | `v2.0` | Offline regex & token slot parsing | Zero-latency, deterministic intent classification for BOOK, STATUS, and CANCEL. |
+| **Fallback Parser (Optional)** | Groq Llama | `3.1-8b-instant` | Temperature `0.0`, strict JSON mode | Fallback for non-standard grammatical inversions (masked text only). |
+
+---
+
+## 7. Visual Screenshots
+
+Screenshots captured across mobile (360x740) and desktop (1366x768) resolutions:
+
+| Screen | Mobile Viewport (360x740) | Desktop Viewport (1366x768) |
+| :--- | :---: | :---: |
+| **Patient Voice App** | ![Patient Mobile](docs/screens/patient_360x740.png) | ![Patient Desktop](docs/screens/patient_1366x768.png) |
+| **Clinic Dashboard** | ![Dashboard Mobile](docs/screens/dashboard_360x740.png) | ![Dashboard Desktop](docs/screens/dashboard_1366x768.png) |
+| **Noise Telemetry Suite** | ![Tests Mobile](docs/screens/tests_360x740.png) | ![Tests Desktop](docs/screens/tests_1366x768.png) |
+| **About & Review Status** | ![About Mobile](docs/screens/about_360x740.png) | ![About Desktop](docs/screens/about_1366x768.png) |
+
+---
+
+## 8. How to Run in 5 Minutes
 
 ### Prerequisites
 - **Python 3.11+**
 - **Node.js 18+** & npm
-- **ffmpeg** installed and accessible in system `PATH` (used by `backend/app/services/audio.py` for conversion to 16kHz mono WAV)
+- **FFmpeg** installed and accessible on system `PATH` (used for 16kHz mono WAV conversion)
 
-### Step 1: Clone and Configure Environment
-Configure your local environment variables:
+### Step 1: Clone Repository and Configure Environment
 ```bash
-git clone <repo-url>
-cd VoiceQueue
+git clone https://github.com/stevejoy-9381/VoiceQueue-gnani.ai-.git
+cd VoiceQueue-gnani.ai-
 cp .env.example .env
 ```
 
-### Step 2: Backend Setup
-Install Python dependencies:
+Edit `.env` and set your Gnani credentials:
+```env
+GNANI_API_KEY=your_actual_key_here
+VOICE_TE=Lavanya
+VOICE_EN=Trupti
+GNANI_DAILY_CAP=150
+```
+*(If no API key is provided, VoiceQueue runs with pre-cached audio and typed inputs remain 100% functional).*
+
+### Step 2: Install and Start Backend
 ```bash
+# Install Python dependencies
 pip install -r backend/requirements.txt
-```
 
-Pre-generate fixed audio prompts in `backend/cache/audio/`:
-```bash
-python scripts/build_cache.py
-```
-
-Run the backend server:
-```bash
+# Run backend API server
 uvicorn backend.app.main:app --reload --port 8000
 ```
-- Health Check: `http://127.0.0.1:8000/health`
-- Credits Usage API: `http://127.0.0.1:8000/usage`
-- Interactive OpenAPI Docs: `http://127.0.0.1:8000/docs`
+- Health Check: `http://localhost:8000/health`
+- OpenAPI Documentation: `http://localhost:8000/docs`
 
-### Step 3: Frontend Setup
+### Step 3: Install and Start Frontend
 In a separate terminal:
 ```bash
 cd frontend
@@ -138,161 +207,156 @@ npm install
 npm run dev
 ```
 
-Open in browser:
-- **Patient Voice App**: `http://localhost:5173/`
-- **Clinic Dashboard**: `http://localhost:5173/clinic`
-- **Voice Tests Telemetry**: `http://localhost:5173/tests`
-- **Audio Lab (Dev Tools)**: `http://localhost:5173/audio-lab?dev=1`
-- **About & Limitations**: `http://localhost:5173/about`
+Open in your browser:
+- **Patient Voice App**: [http://localhost:5173/](http://localhost:5173/)
+- **Clinic Dashboard**: [http://localhost:5173/clinic](http://localhost:5173/clinic)
+- **Telemetry Tests**: [http://localhost:5173/tests](http://localhost:5173/tests)
+- **About & Review Pipeline**: [http://localhost:5173/about](http://localhost:5173/about)
 
 ---
 
-## 5. Demo Recording Guide (/demo-mode)
-
-To record a clean, professional demonstration video of the full voice and live queue flow:
-
-### Exact Recording Steps
-1. **Start the Servers**:
-   - Backend: `uvicorn backend.app.main:app --reload --port 8000`
-   - Frontend: `cd frontend && npm run dev`
-2. **Open the Screens in Clean Mode** (`?clean=1` hides developer debug pills):
-   - **Laptop / Tablet**: Open `http://localhost:5173/clinic?clean=1`
-   - **Phone**: Open `http://<your-local-ip>:5173/?clean=1` (or split-screen browser at 390px mobile viewport)
-3. **Reset and Seed Demo Data**:
-   - On the Clinic Dashboard, press **`Shift+R`** on your keyboard (hidden shortcut) or click **Seed demo**.
-   - This resets the queue and creates **4 fake tokens** (Token #1 in consultation, Tokens #2–4 waiting).
-4. **Demonstrate Live Voice Flow**:
-   - Hold the mic on the phone and speak: *"నాకు రేపు టోకెన్ కావాలి"* (or *"I need an appointment tomorrow"*).
-   - Listen to the spoken reply and watch Token #5 appear live on the dashboard within 1 second via WebSocket without page refresh.
-5. **Demonstrate Live Status Check**:
-   - Hold the mic and ask: *"What is my token status?"* (or *"naa token number status"*).
-   - The patient card updates with exact queue position (*"Ahead in queue: 3 patients"*).
-6. **Demonstrate Consultation Progression**:
-   - On the laptop dashboard, click **Call next** (Token #2 moves into consultation) and click **Mark done**.
-   - Notice the ahead-counter on the phone update in real time.
-7. **Demonstrate Cancellation**:
-   - On the phone, say *"Cancel token"* -> tap the **Yes** confirmation button. The token is marked cancelled.
-
-> **Zero Credit Waste via Pre-Cached Audio**: All fixed prompts (greetings, confirmations, cancellations, repetitions) are served directly from `backend/cache/audio/`, so the demo consumes minimal Gnani API calls.
-
-
----
-
-## 5. Environment Variables
+## 9. Environment Variables Reference
 
 | Variable | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `GNANI_API_KEY` | String | `""` | Gnani API access key for Prisma STT and Timbre TTS. |
-| `GNANI_MAX_CALLS` | Integer | `300` | Daily safety limit for real Gnani API calls. Further calls are blocked. |
-| `GNANI_CREDITS_PER_CALL` | Float | `None` | Optional multiplier to estimate total credit consumption in `/usage`. |
-| `VOICE_TE` | String | `"Lavanya"` | Voice identifier for Telugu Timbre TTS. |
-| `VOICE_EN` | String | `"Trupti"` | Voice identifier for English Timbre TTS. |
-| `DATABASE_URL` | String | `sqlite:///./voicequeue.db` | SQLAlchemy database connection string. |
-| `CORS_ORIGINS` | String | `http://localhost:5173,...` | Comma-separated list of allowed origins. |
-| `CLINIC_NAME` | String | `Demo Clinic` | Display clinic name in UI headers and spoken greetings. |
-| `GROQ_API_KEY` | String | `""` | Optional API key for Groq `llama-3.1-8b-instant` fallback parsing. |
-| `VITE_API_URL` | String | `""` | *(Frontend only)* Remote backend base URL when deploying on Vercel (e.g. `https://your-api.onrender.com`). |
+| `VOICE_TE` | String | `"Lavanya"` | Allowed Timbre-v2.5 Telugu voice (`Lavanya`, `Lehara`, `Suhana`, etc.). |
+| `VOICE_EN` | String | `"Trupti"` | Allowed Timbre-v2.5 English voice (`Trupti`, `Devika`, `Pranav`, etc.). |
+| `GNANI_DAILY_CAP` | Integer | `150` | Maximum billable Gnani calls permitted per day before emergency auto-pause. |
+| `GNANI_RESERVE` | Integer | `40` | Reserved calls remaining when warning amber meter activates. |
+| `RATE_LIMIT_VOICE_10MIN`| Integer | `6` | Maximum voice turns allowed per IP address in any 10-minute sliding window. |
+| `RATE_LIMIT_VOICE_DAILY`| Integer | `30` | Maximum voice turns allowed per IP address per calendar day. |
+| `SESSION_VOICE_CAP` | Integer | `10` | Maximum voice turns allowed per browser session before forcing text input. |
+| `OWNER_KEY` | String | `""` | Secret authorization token to bypass rate limits and reset meters. |
+| `DATABASE_URL` | String | `sqlite:///./voicequeue.db` | SQLAlchemy connection string (SQLite or PostgreSQL). |
+| `CORS_ORIGINS` | String | `http://localhost:5173,...` | Comma-separated allowed origins (set to frontend URL in production). |
+| `DEMO_AUTOSEED` | Boolean | `false` | When `true`, automatically seeds 4 demo tokens if queue is empty on startup. |
+| `PORT` | Integer | `8000` | Port bound by Uvicorn in containerized deployments. |
+| `AUDIO_CLEAN` | Boolean | `true` | Enables automatic audio high-pass filtering and volume normalization. |
+| `DEBUG_SAVE_AUDIO` | Boolean | `false` | Enables temporary storage of raw audio clips for the `/audio-lab` tool. |
+| `DEV_ENDPOINTS` | Boolean | `false` | Enables `/dev/latency` endpoint for statistical latency benchmarking. |
+| `VITE_API_URL` | String | `""` | *(Frontend only)* Backend base URL for deployed frontend (e.g. on Vercel). |
 
 ---
 
-## 6. Running with Gnani AI
+## 10. How to Run Automated Tests
 
-1. Set your credentials in `.env`:
-   ```env
-   GNANI_API_KEY=your_actual_key_here
-   GNANI_MAX_CALLS=300
-   VOICE_TE=Lavanya
-   VOICE_EN=Trupti
-   ```
-2. Run `python scripts/build_cache.py` to populate the audio cache with live synthesized Timbre audio.
-3. Start the backend. Spoken audio from the microphone is processed directly through **Gnani Prisma v3.0** and synthesized with **Gnani Timbre v2.5**. If `GNANI_API_KEY` is omitted, the app starts and guides you with a banner while typed input remains functional.
+VoiceQueue includes a comprehensive, multi-layer testing suite:
 
----
-
-## 7. Rebuilding Audio Cache
-
-Pre-generated audio prompts for Telugu and English (greetings, confirmations, pauses) are stored in `backend/cache/audio/`. To re-generate all audio files:
+### 1. Backend Integration & Unit Tests (Pytest)
+Runs all 163 automated backend tests covering database operations, queue math, audio validation, rate limiting, and Telugu review logic (stubs only, zero external Gnani calls):
 ```bash
-python scripts/build_cache.py
+python -m pytest backend/tests/ -v -p no:anyio -p no:asyncio -p no:locust -p no:langsmith
 ```
-Existing files are preserved; pass `--overwrite` or delete `backend/cache/audio/` to recreate them.
 
----
+### 2. Frontend Component Tests (Vitest & RTL)
+Runs all 25 frontend tests verifying language switching, elder-friendly mode, cancel confirmation, and dashboard keyboard shortcuts:
+```bash
+npm --prefix frontend test -- --run
+```
 
-## 8. Running Automated Tests
-
-### Offline Rule-Based NLU Text Accuracy Benchmark
-Runs 45 benchmark phrases across Telugu, English, and Mix covering BOOK, STATUS, CANCEL, YES, and NO:
+### 3. Offline Rule-Based NLU Text Accuracy Benchmark
+Evaluates 45 canonical benchmark phrases across Telugu, English, and Mix without using audio:
 ```bash
 python scripts/run_text_tests.py
 ```
-Expected accuracy: **100.0% (45/45)**.
+**Result**: `100.0% accuracy (45/45 passed)`.
 
-### Full Integration & Unit Test Suite
-Runs all 58 automated tests across the database, queue math, audio conversions, WebSocket manager, usage safety guard, and voice test telemetry:
+### 4. Playwright End-to-End & Accessibility Tests
+Launches headless Chromium, captures full-page screenshots at 360x740 and 1366x768, and executes automated **axe-core** accessibility checks:
 ```bash
-python -m pytest -p no:anyio -p no:asyncio -p no:locust -p no:langsmith -v
+npx playwright test e2e/screenshots_and_a11y.spec.js
+```
+
+### 5. Repository Compliance & Secret Scanner
+Verifies zero hardcoded API keys, no tracked `.env` or debug audio files, and zero leaked secret headers in the built frontend bundle:
+```bash
+python scripts/check_repo.py
 ```
 
 ---
 
-## 9. Docker Deployment
+## 11. Deployment (Render & Vercel)
 
-### Building and Running with Docker Compose
-```bash
-docker-compose up --build
-```
-The backend container automatically installs `ffmpeg`, generates the audio cache, and serves the API on port `8000`.
+### Backend Deployment (Render)
+A turnkey [`render.yaml`](render.yaml) blueprint is included in the repository.
+1. Create a new **Web Service** on [Render](https://render.com) using **Docker runtime**.
+2. Set Environment Variables:
+   - `GNANI_API_KEY`: Dedicated production key
+   - `CORS_ORIGINS`: `https://your-app.vercel.app`
+   - `DEMO_AUTOSEED`: `true` (auto-seeds 4 tokens on cold starts)
+   - `VOICE_TE`: `Lavanya`
+   - `VOICE_EN`: `Trupti`
+3. Health check path: `/health`.
 
----
-
-## 10. Deployment Notes (Render & Vercel)
-
-### Backend Deployment on Render
-1. Create a new **Web Service** on [Render](https://render.com).
-2. Connect your Git repository.
-3. Choose **Docker** as the runtime (Render will build using `backend/Dockerfile` which installs `ffmpeg`).
-4. Set Environment Variables in Render:
-   - `GNANI_API_KEY`: your Gnani API key
-   - `GNANI_MAX_CALLS`: `300`
-   - `CORS_ORIGINS`: `https://your-frontend.vercel.app`
-   - `CLINIC_NAME`: `Demo Clinic`
-5. **Note on SQLite on Free Hosting**: Free containers may reset local disk on restart. Seed demo data anytime after deploy by sending a POST request:
-   ```bash
-   curl -X POST https://your-backend.onrender.com/demo/seed?day=today
-   ```
-
-### Frontend Deployment on Vercel
-1. Create a new project on [Vercel](https://vercel.com) and link your Git repository.
-2. Set the Root Directory to `frontend`.
-3. Set Environment Variable in Vercel:
+### Frontend Deployment (Vercel)
+A pre-configured [`frontend/vercel.json`](frontend/vercel.json) handles Vite SPA rewrites.
+1. Import repository into [Vercel](https://vercel.com) with Root Directory set to `frontend`.
+2. Add Environment Variable:
    - `VITE_API_URL`: `https://your-backend.onrender.com`
-4. Deploy.
-5. **Microphone Security Note**: Modern web browsers require a secure origin (**HTTPS** or `localhost`) to grant microphone access via `navigator.mediaDevices.getUserMedia`. Vercel automatically provides HTTPS.
+3. Deploy. Microphone access over HTTPS is enabled automatically by Vercel's SSL certificate.
+
+### Verifying Deployed Service (`scripts/smoke_deployed.py`)
+Run the deployment smoke test script to verify all live endpoints without making any Gnani AI calls:
+```bash
+python scripts/smoke_deployed.py --backend-url https://your-backend.onrender.com --frontend-url https://your-app.vercel.app
+```
+
+> [!NOTE]
+> **Free Hosting Notice**: Free-tier cloud containers (Render, Koyeb) sleep after 15 minutes of inactivity. Open the backend URL **1–2 minutes before recording** to wake up the instance. `DEMO_AUTOSEED=true` automatically restores a clean 4-patient queue on every cold restart.
 
 ---
 
-## 11. Honest Limitations
+## 12. Honest Limitations
 
-- **Works best with short, clear sentences**: Sentences like *"naaku repu token kavali"* or *"what is my token status"* yield the best recognition accuracy. Tangential speech or complex compound sentences can degrade parsing.
-- **Heavy noise lowers accuracy**: High ambient noise levels (loud traffic horns, crowded waiting halls, or loud ceiling fans near the microphone) decrease speech-to-text accuracy.
-- **Only three actions are supported**: VoiceQueue handles **Token Booking** (Today / Tomorrow), **Queue Status Check**, and **Token Cancellation** (with 60s confirmation). Medical advice, diagnostic inquiries, and payment collections are out of scope.
-- **Rule-based intent understanding**: Primary intent detection relies on deterministic regex keyword matching and day slot extraction, with optional Groq fallback. Unseen dialectal slang may trigger a clarification prompt.
-- **Tested with few speakers**: Evaluated primarily with synthetic benchmark speech and local test recordings. Performance across diverse rural accents may vary.
+*(Copied directly from the [About & Limitations](http://localhost:5173/about) page)*
 
----
-
-## 12. Synthetic Data Notice
-
-> **All data in this demo is synthetic.**  
-> No real patient names, doctor records, phone numbers, or Protected Health Information (PHI) are stored or processed.
+- **Works best with short, clear sentences**: Phrases like *"naaku repu token kavali"* or *"what is my token status"* yield optimal transcription and intent parsing. Lengthy narratives or tangential context may reduce accuracy.
+- **Heavy noise lowers accuracy**: High background noise (loud traffic, heavy street horns, or loud ceiling fans near the microphone) can degrade audio fidelity and STT recognition rates.
+- **Only three actions are supported**: The current system handles only *Token Booking* (Today/Tomorrow), *Queue Status Check*, and *Token Cancellation* (with 60-second confirmation memory). Complex inquiries like doctor medical advice, prescription questions, or fee payments are out of scope.
+- **Rule-based intent understanding**: The core parser prioritizes fast, deterministic, offline keyword matching (with day slot resolution). Novel colloquial slang or grammatical inversions not present in the vocabulary fall back to clarification prompts.
+- **Speaker sample**: Accuracy was measured with a small number of speakers.
 
 ---
 
-## 13. Credits & Acknowledgements
+## 13. Test Results Summary
 
-- **Gnani.ai Speech Technologies**:
-  - [Gnani Prisma STT v3.0](https://docs.gnani.ai) for Indian accent acoustic modeling across Indic languages.
-  - [Gnani Timbre TTS v2.5](https://docs.gnani.ai) for high-fidelity Indic voice synthesis.
-- **FastAPI** & **SQLAlchemy** for the asynchronous REST & WebSocket backend.
-- **React** & **Vite** for the mobile-first frontend.
+Full empirical trial results and test logs are maintained on the interactive [Tests Telemetry Page](/tests) (`docs/test_report.md`):
+
+- **Text Rule Accuracy Benchmark**: **100.0% (45/45)** phrases passed across Telugu (15), English (15), and Mix (15).
+- **Audio Quality Gates**: 100% rejection rate for audio under 0.6s, audio over 12s, silent audio (< 0.003 RMS), and corrupt file headers.
+- **Accessibility Audit**: Passed **axe-core** accessibility evaluations with 0 serious or critical violations in Elder-Friendly Mode.
+- **Native Telugu Review Pipeline**: 100% of canonical spoken Telugu prompts reviewed and approved in [`docs/reviewed.json`](docs/reviewed.json).
+
+---
+
+## 14. Demo Recording Mode (`?clean=1`)
+
+To record clean presentation videos:
+1. Review the preparation guide in [`docs/DEMO_CHECKLIST.md`](docs/DEMO_CHECKLIST.md).
+2. Reset and seed 4 demo tokens:
+   - Via CLI: `python scripts/demo_reset.py`
+   - Via Dashboard: Press **`Shift + R`** and confirm.
+3. Open both browser windows with **`?clean=1`**:
+   - **Patient App**: `http://localhost:5173/?clean=1`
+   - **Clinic Dashboard**: `http://localhost:5173/clinic?clean=1`
+4. The `?clean=1` query parameter automatically strips developer pills, mic device selectors, and technical logs for a tidy presentation.
+
+---
+
+## 15. Synthetic Data & Privacy Notice
+
+> [!IMPORTANT]
+> **All data in this repository and live demonstration is synthetic.**  
+> No real patient names, doctor identities, phone numbers, or Protected Health Information (PHI) are collected, transmitted, or stored. Built-in regular expression filters automatically mask 10-digit phone numbers and identifying details from voice transcripts before logging or broadcasting.
+
+---
+
+## 16. Credits & Acknowledgements
+
+- **[Gnani.ai Speech Platform](https://docs.gnani.ai)**:
+  - **Gnani Prisma STT v3.0** for real-time Indic acoustic speech modeling.
+  - **Gnani Timbre TTS v2.5** for high-fidelity Indic neural voice synthesis.
+- **FastAPI** & **SQLAlchemy** for the asynchronous REST and WebSocket API.
+- **React 18** & **Vite** for the responsive, elder-friendly user interface.
+- **FFmpeg** for audio conversion and normalization.
