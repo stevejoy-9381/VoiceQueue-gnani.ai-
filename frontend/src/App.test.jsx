@@ -327,6 +327,42 @@ describe('Patient App Component Tests (Vitest + RTL)', () => {
     window.WebSocket = origWS
   })
 
+  it('7b. P3-2: Token-called WebSocket event displays alert banner on patient page without refresh', async () => {
+    localStorage.setItem('vq_token_id', '42')
+
+    let wsInstance = null
+    class TestWebSocket {
+      constructor(url) {
+        this.url = url
+        wsInstance = this
+      }
+      close() {}
+    }
+    const origWS = window.WebSocket
+    window.WebSocket = TestWebSocket
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(wsInstance).not.toBeNull()
+    })
+
+    // Simulate receiving token_called event for this token
+    act(() => {
+      wsInstance.onmessage({
+        data: JSON.stringify({ type: 'token_called', token_id: 42, token_number: 4 }),
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Your token is being called\. Please go in\.|మీ టోకెన్ పిలుస్తున్నారు\. దయచేసి లోపలికి వెళ్లండి\./i)
+      ).toBeInTheDocument()
+    })
+
+    window.WebSocket = origWS
+  })
+
   it('8. Error catalog maps all 16 error codes to bilingual messages and actions', async () => {
     const { EXPECTED_ERROR_CODES, getErrorDetails } = await import('./errorCatalog.js')
     expect(EXPECTED_ERROR_CODES).toHaveLength(16)

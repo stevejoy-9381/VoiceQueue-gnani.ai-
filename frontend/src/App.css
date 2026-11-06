@@ -1460,3 +1460,100 @@ details summary:focus-visible {
   }
 }
 
+/* =========================================================================
+   P3-2: Token-Called Alert Banner
+   ========================================================================= */
+
+.token-called-banner {
+  background: #E8F5E9;
+  border: 3px solid #2E7D32;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin: 12px 0 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 4px 14px rgba(46, 125, 50, 0.22);
+  animation: callBannerPulse 2s infinite alternate ease-in-out;
+}
+
+@keyframes callBannerPulse {
+  0% {
+    box-shadow: 0 4px 14px rgba(46, 125, 50, 0.22);
+  }
+  100% {
+    box-shadow: 0 6px 22px rgba(46, 125, 50, 0.45);
+  }
+}
+
+.token-called-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+}
+
+.token-called-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.token-called-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.token-called-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1B5E20;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.token-called-sub {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2E7D32;
+  margin: 0;
+}
+
+.token-called-dismiss {
+  background: transparent;
+  border: 1px solid #81C784;
+  color: #1B5E20;
+  font-size: 1.1rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.token-called-dismiss:hover {
+  background: #C8E6C9;
+}
+
+.elder-mode .token-called-banner {
+  border: 4px solid #1A0F0A;
+  background: #FFFDF8;
+}
+
+.elder-mode .token-called-title {
+  font-size: 1.55rem;
+  color: #1A0F0A;
+}
+
+.elder-mode .token-called-sub {
+  font-size: 1.2rem;
+  color: #1A0F0A;
+}
+
+

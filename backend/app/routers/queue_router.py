@@ -6,9 +6,19 @@ from sqlalchemy.orm import Session
 
 from backend.app.db import get_db
 from backend.app.models import Token
-from backend.app.schemas import MessageResponse, QueueResponse, TokenCreate, TokenResponse
+from backend.app.schemas import (
+    CallAlertResponse,
+    MessageResponse,
+    QueueResponse,
+    TokenCreate,
+    TokenResponse,
+)
 from backend.app.services import queue_service
-from backend.app.services.broadcast import broadcast_demo_reset, broadcast_queue_change
+from backend.app.services.broadcast import (
+    broadcast_demo_reset,
+    broadcast_queue_change,
+    broadcast_token_called,
+)
 
 router = APIRouter(tags=["Queue & Tokens"])
 
@@ -45,6 +55,26 @@ def get_token(token_id: int, db: Session = Depends(get_db)):
     if not tok:
         raise HTTPException(status_code=404, detail="Token not found.")
     return _to_token_response(tok, db)
+
+
+@router.get("/tokens/{token_id}/call-alert", response_model=CallAlertResponse)
+def get_token_call_alert(
+    token_id: int,
+    lang: str = Query("te-IN", description="Language code: te-IN, en-IN, or mix"),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns call alert message and optional audio for a called token (P3-2).
+    Respects ALERT_VOICE (default False -> banner message only).
+    """
+    tok = db.query(Token).filter(Token.id == token_id).first()
+    if not tok:
+        raise HTTPException(status_code=404, detail="Token not found.")
+
+    from backend.app.services.call_alert import get_token_call_alert_data
+
+    return get_token_call_alert_data(tok, lang=lang)
+
 
 
 @router.post("/tokens/{token_id}/cancel", response_model=TokenResponse)
@@ -93,6 +123,7 @@ def call_next_token(day: str = Query("today", description="Day: today, tomorrow,
     broadcast_queue_change(target_date)
     if not tok:
         return None
+    broadcast_token_called(tok.id, tok.number)
     return _to_token_response(tok, db)
 
 

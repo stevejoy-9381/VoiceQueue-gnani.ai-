@@ -127,6 +127,7 @@ const UI_STRINGS = {
     patients: 'రోగులు ఉన్నారు',
     patient: 'రోగి ఉన్నారు',
     tokenIs: 'టోకెన్ స్థితి',
+    tokenCalledAlert: 'మీ టోకెన్ పిలుస్తున్నారు. దయచేసి లోపలికి వెళ్లండి.',
     typeInstead: '⌨ మాట్లాడటానికి బదులుగా టైప్ చేయండి',
     hideType: '▲ టైపింగ్ దాచండి',
     typePlaceholder: 'ఉదా. repu token kavali / token status',
@@ -172,6 +173,7 @@ const UI_STRINGS = {
     patients: 'patients',
     patient: 'patient',
     tokenIs: 'Token is',
+    tokenCalledAlert: 'Your token is being called. Please go in.',
     typeInstead: '⌨ Type instead of speaking',
     hideType: '▲ Hide typing',
     typePlaceholder: 'e.g. need a token tomorrow / token status',
@@ -217,6 +219,7 @@ const UI_STRINGS = {
     patients: 'patients',
     patient: 'patient',
     tokenIs: 'Token is',
+    tokenCalledAlert: 'Your token is being called. Please go in.',
     typeInstead: '⌨ Type instead of speaking',
     hideType: '▲ Hide typing',
     typePlaceholder: 'e.g. repu token kavali / token status',
@@ -382,6 +385,17 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [currentError, setCurrentError] = useState(null);
   const [tokenClearedNotice, setTokenClearedNotice] = useState('');
+  const [tokenCalledAlert, setTokenCalledAlert] = useState(null);
+
+  const tokenRef = useRef(token);
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
+  const languageRef = useRef(language);
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   function showError(errInput) {
     if (!errInput) {
@@ -767,6 +781,7 @@ export default function App() {
             const data = JSON.parse(event.data);
             if (data.type === 'demo_reset') {
               setToken(null);
+              setTokenCalledAlert(null);
               try {
                 localStorage.removeItem('vq_token_id');
               } catch (e) {}
@@ -775,6 +790,34 @@ export default function App() {
               const currentId = getStoredTokenId();
               if (currentId) {
                 fetchTokenDetails(currentId);
+              }
+            } else if (data.type === 'token_called') {
+              const currentId = getStoredTokenId();
+              const myTok = tokenRef.current;
+              const isMyToken =
+                (myTok && Number(myTok.id) === Number(data.token_id)) ||
+                (currentId && Number(currentId) === Number(data.token_id));
+
+              if (isMyToken) {
+                const calledNum = data.token_number || (myTok && myTok.number);
+                setTokenCalledAlert({
+                  tokenId: data.token_id,
+                  number: calledNum,
+                  time: Date.now(),
+                });
+                if (currentId) {
+                  fetchTokenDetails(currentId);
+                }
+                // P3-2: Alert voice playback if server has ALERT_VOICE=true
+                const curLang = languageRef.current || 'te-IN';
+                fetch(`${API_BASE}/tokens/${data.token_id}/call-alert?lang=${curLang}`)
+                  .then((res) => (res.ok ? res.json() : null))
+                  .then((alertData) => {
+                    if (alertData && alertData.alert_voice && alertData.audio_base64) {
+                      playBase64Audio(alertData.audio_base64);
+                    }
+                  })
+                  .catch(() => {});
               }
             }
           } catch (e) {}
@@ -1852,6 +1895,37 @@ export default function App() {
       </section>
 
       {/* 5. Token Card */}
+      {tokenCalledAlert && (
+        <section
+          className="token-called-banner"
+          role="alert"
+          aria-live="assertive"
+          aria-label="Token called alert banner"
+        >
+          <div className="token-called-content">
+            <span className="token-called-icon" aria-hidden="true">🔔</span>
+            <div className="token-called-body">
+              <h2 className="token-called-title">
+                {t.tokenCalledAlert || 'Your token is being called. Please go in.'}
+              </h2>
+              {tokenCalledAlert.number && (
+                <p className="token-called-sub">
+                  {t.tokenLabel} #{tokenCalledAlert.number} &bull; {t.doctorSeeing || 'Doctor is seeing you now!'}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="token-called-dismiss"
+            onClick={() => setTokenCalledAlert(null)}
+            aria-label="Dismiss alert"
+          >
+            ✕
+          </button>
+        </section>
+      )}
+
       {tokenClearedNotice && (
         <section
           className="card token-cleared-notice"

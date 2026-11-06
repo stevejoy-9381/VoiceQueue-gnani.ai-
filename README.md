@@ -231,6 +231,7 @@ Open in your browser:
 | `DATABASE_URL` | String | `sqlite:///./voicequeue.db` | SQLAlchemy connection string (SQLite or PostgreSQL). |
 | `CORS_ORIGINS` | String | `http://localhost:5173,...` | Comma-separated allowed origins (set to frontend URL in production). |
 | `DEMO_AUTOSEED` | Boolean | `false` | When `true`, automatically seeds 4 demo tokens if queue is empty on startup. |
+| `ALERT_VOICE` | Boolean | `false` | When `true`, plays spoken alert audio on the patient page when called (default `false` shows banner only). |
 | `PORT` | Integer | `8000` | Port bound by Uvicorn in containerized deployments. |
 | `AUDIO_CLEAN` | Boolean | `true` | Enables automatic audio high-pass filtering and volume normalization. |
 | `DEBUG_SAVE_AUDIO` | Boolean | `false` | Enables temporary storage of raw audio clips for the `/audio-lab` tool. |

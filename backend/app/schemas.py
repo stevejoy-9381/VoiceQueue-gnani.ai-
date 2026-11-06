@@ -190,3 +190,13 @@ class VoiceTestSummary(BaseModel):
     overall_pass_rate: float
     breakdown: List[NoiseSummaryItem]
 
+
+class CallAlertResponse(BaseModel):
+    alert_voice: bool
+    audio_base64: Optional[str] = None
+    source: str = "none"  # 'none' | 'cache' | 'timbre'
+    message: str
+    token_id: int
+    number: int
+
+

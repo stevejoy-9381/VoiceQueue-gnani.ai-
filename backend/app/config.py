@@ -71,6 +71,7 @@ class Settings:
     AUDIO_CLEAN: bool = _get_bool("AUDIO_CLEAN", True)
     DEBUG_SAVE_AUDIO: bool = _get_bool("DEBUG_SAVE_AUDIO", False)
     DEV_ENDPOINTS: bool = _get_bool("DEV_ENDPOINTS", False)
+    ALERT_VOICE: bool = _get_bool("ALERT_VOICE", False)
     COMPARE_MAX_CALLS: int = int(os.getenv("COMPARE_MAX_CALLS", "20"))
     PORT: int = int(os.getenv("PORT", "8000"))
     DEMO_AUTOSEED: bool = _get_bool("DEMO_AUTOSEED", False)

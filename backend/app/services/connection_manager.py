@@ -69,3 +69,15 @@ def broadcast_voice_log(log_item: dict | None = None) -> None:
     """Broadcasts a voice activity log event to all connected WebSocket clients."""
     _dispatch_broadcast({"type": "voice_log", "log": log_item})
 
+
+def broadcast_token_called(token_id: int, token_number: int | None = None) -> None:
+    """
+    Broadcasts a token_called event to all connected WebSocket clients when a token is called next.
+    Format: {"type": "token_called", "token_id": token_id, "token_number": token_number}
+    """
+    msg = {"type": "token_called", "token_id": token_id}
+    if token_number is not None:
+        msg["token_number"] = token_number
+    _dispatch_broadcast(msg)
+
+

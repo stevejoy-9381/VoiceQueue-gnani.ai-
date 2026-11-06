@@ -4,17 +4,17 @@
 
 | Metric | Result |
 |:---|:---|
-| **Total Automated Tests Executed** | **243** |
-| **Passed** | **243 (100.0%)** |
+| **Total Automated Tests Executed** | **248** |
+| **Passed** | **248 (100.0%)** |
 | **Failed** | **0** |
 | **Bugs Found** | **14** |
 | **Bugs Fixed** | **14** |
 | **Bugs Still Open** | **0** (Blocker: 0, Major: 0, Minor: 0) |
-| **Backend Pytest Suite** | **164/164 passed** (Stubs only, zero external Gnani calls) |
-| **Frontend Vitest Suite** | **25/25 passed** (Component unit tests, RTL + Happy-DOM) |
+| **Backend Pytest Suite** | **168/168 passed** (Stubs only, zero external Gnani calls) |
+| **Frontend Vitest Suite** | **26/26 passed** (Component unit tests, RTL + Happy-DOM) |
 | **Playwright E2E & A11y Suite** | **9/9 test suites passed** (Visual snapshots & axe-core audits) |
 | **Offline NLU Benchmark Accuracy**| **45/45 (100.0%)** on `test_phrases.csv` |
-| **Security & Hygiene Check** | **123/123 files clean** (`scripts/check_repo.py`) |
+| **Security & Hygiene Check** | **125/125 files clean** (`scripts/check_repo.py`) |
 | **Overall Status** | **ALL PASS (READY FOR CLINICAL TRIAL)** |
 
 ---
