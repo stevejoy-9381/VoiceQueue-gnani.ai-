@@ -43,7 +43,21 @@ def check_health(client: httpx.Client, backend_url: str, timeout: float) -> bool
         resp = client.get(target, timeout=timeout)
         if resp.status_code == 200:
             data = resp.json()
+            gnani_ok = data.get("gnani_configured", False)
+            ffmpeg_ok = data.get("ffmpeg_found", False)
+            voices_ok = data.get("voices_valid", True)
+            calls_used = data.get("daily_calls_used", 0)
+            daily_cap = data.get("daily_cap", data.get("cap", 150))
+            uptime = data.get("uptime", "unknown")
+            is_ready = resp.status_code == 200 and ffmpeg_ok and voices_ok
+
             print(f"  [PASS] /health responded 200 OK (status: {data.get('status', 'ok')})")
+            print(f"         - Gnani Configured : {'YES' if gnani_ok else 'NO (offline/stub mode)'}")
+            print(f"         - FFmpeg Installed : {'YES' if ffmpeg_ok else 'NO'}")
+            print(f"         - Voices Valid     : {'YES' if voices_ok else 'NO'}")
+            print(f"         - Daily Calls Used : {calls_used} / {daily_cap}")
+            print(f"         - Service Uptime   : {uptime}")
+            print(f"         - DEPLOYMENT READY : {'YES' if is_ready else 'NO'}")
             return True
         else:
             print(f"  [FAIL] /health returned HTTP {resp.status_code}: {resp.text}")

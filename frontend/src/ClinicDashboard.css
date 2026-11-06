@@ -890,3 +890,61 @@
     align-self: flex-end;
   }
 }
+
+/* =========================================================================
+   P3-3: Dev Error Counter Card (?dev=1)
+   ========================================================================= */
+
+.dev-error-counter-card {
+  margin-bottom: 16px;
+  border-left: 4px solid var(--accent, #C8893B);
+  background: #FFFDF9;
+}
+
+.dev-tag-badge {
+  background: var(--beige-100, #F5EBDD);
+  color: var(--coffee-600, #6F4E37);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--beige-300, #D4BBA5);
+  font-family: monospace;
+}
+
+.error-counter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.error-count-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #991B1B;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.error-code-badge {
+  background: #991B1B;
+  color: #FFFFFF;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.no-errors-text {
+  font-size: 14px;
+  color: var(--coffee-300, #A67B5B);
+  margin: 4px 0;
+  font-style: italic;
+}
+

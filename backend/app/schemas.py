@@ -15,6 +15,11 @@ class HealthResponse(BaseModel):
     clinic_name: Optional[str] = None
     debug_save_audio: bool = False
     telugu_reviewed: bool = False
+    daily_calls_used: int = 0
+    daily_cap: int = 150
+    cap: int = 150
+    uptime_seconds: float = 0.0
+    uptime: str = "0.0s"
 
 
 class TokenCreate(BaseModel):

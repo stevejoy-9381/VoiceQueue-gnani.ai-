@@ -230,5 +230,26 @@ describe('ClinicDashboard Component Tests (Vitest + RTL)', () => {
       expect(screen.getByText(/too quiet/i)).toBeInTheDocument()
     })
   })
+
+  it('9. P3-3: Dev mode (?dev=1) shows error counter card grouped by error_code', async () => {
+    window.history.pushState({}, '', '/clinic?dev=1')
+
+    render(<ClinicDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Error counter by error code/i)).toBeInTheDocument()
+      expect(screen.getByText('too_quiet')).toBeInTheDocument()
+    })
+  })
+
+  it('10. P3-3: When ?dev=1 is NOT present, error counter card is not rendered', async () => {
+    window.history.pushState({}, '', '/clinic')
+
+    render(<ClinicDashboard />)
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Error counter by error code/i)).not.toBeInTheDocument()
+    })
+  })
 })
 

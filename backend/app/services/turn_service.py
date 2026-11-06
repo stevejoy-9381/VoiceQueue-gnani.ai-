@@ -13,6 +13,7 @@ from backend.app.schemas import TurnResponse
 from backend.app.services import audio, gnani, intent as intent_service, privacy, queue_service, replies
 from backend.app.services.broadcast import broadcast_queue_change, broadcast_voice_log
 from backend.app.services.latency_tracker import latency_tracker
+from backend.app.services.monitoring import record_error
 
 # In-memory dictionary for pending actions requiring confirmation
 # Key: session_id -> {"action": "CANCEL", "token_id": int, "timestamp": float}
@@ -414,6 +415,7 @@ def process_turn(
 
             latency_tracker.record(times)
             log_latency_line(times)
+            record_error("empty_transcript")
 
             return TurnResponse(
                 transcript="",
@@ -684,6 +686,7 @@ def process_turn(
             db.add(vlog)
             db.commit()
             broadcast_voice_log()
+            record_error("turn_error")
         except Exception:
             pass
 

@@ -178,6 +178,9 @@ def voice_turn(
             db.commit()
             broadcast_voice_log()
             broadcast_queue_change("")
+            if err_code:
+                from backend.app.services.monitoring import record_error
+                record_error(err_code)
         except Exception:
             pass
 
@@ -283,6 +286,9 @@ def voice_turn(
             db.commit()
             broadcast_voice_log()
             broadcast_queue_change("")
+            if err_code:
+                from backend.app.services.monitoring import record_error
+                record_error(err_code)
         except Exception:
             pass
 
@@ -374,6 +380,9 @@ def voice_turn(
             db.commit()
             broadcast_voice_log()
             broadcast_queue_change("")
+            if err_code:
+                from backend.app.services.monitoring import record_error
+                record_error(err_code)
         except Exception:
             pass
 

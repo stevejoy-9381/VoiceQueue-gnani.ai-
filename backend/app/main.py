@@ -11,7 +11,14 @@ from backend.app.routers.voice_test_router import router as voice_test_router
 from backend.app.schemas import HealthResponse
 from backend.app.services.audio import clear_debug_audio_dir, scan_and_clean_audio_cache
 from backend.app.services.connection_manager import manager
+from backend.app.services.credit_protection import count_real_calls_today
 from backend.app.services.gnani import close_http_client
+from backend.app.services.monitoring import (
+    StructuredLoggingMiddleware,
+    get_error_counts,
+    get_uptime_seconds,
+    get_uptime_str,
+)
 from backend.app.services.telugu_review import get_review_status
 
 
@@ -54,6 +61,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Structured JSON logging middleware (P3-3)
+app.add_middleware(StructuredLoggingMiddleware)
 
 # Include Routers
 app.include_router(queue_router)
@@ -113,6 +123,11 @@ def get_health():
     rev_status = get_review_status()
     telugu_reviewed = bool(rev_status.get("reviewed_by_native_speaker", False))
 
+    calls_used = count_real_calls_today()
+    daily_cap = settings.GNANI_DAILY_CAP
+    uptime_sec = get_uptime_seconds()
+    uptime_str = get_uptime_str()
+
     return HealthResponse(
         status="ok",
         gnani_configured=gnani_configured,
@@ -125,7 +140,22 @@ def get_health():
         clinic_name=settings.CLINIC_NAME,
         debug_save_audio=bool(settings.DEBUG_SAVE_AUDIO),
         telugu_reviewed=telugu_reviewed,
+        daily_calls_used=calls_used,
+        daily_cap=daily_cap,
+        cap=daily_cap,
+        uptime_seconds=uptime_sec,
+        uptime=uptime_str,
     )
+
+
+@app.get("/dev/error-counts", tags=["Monitoring"])
+def get_dev_error_counts():
+    """Returns real-time counter of errors grouped by error_code (P3-3)."""
+    counts = get_error_counts()
+    return {
+        "error_counts": counts,
+        "total_errors": sum(counts.values()),
+    }
 
 
 @app.get("/telugu-review-status", tags=["Telugu Review"])

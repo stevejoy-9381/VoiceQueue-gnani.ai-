@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './ClinicDashboard.css';
 import { API_BASE, getWebSocketUrl } from './config.js';
 
@@ -14,10 +14,12 @@ function formatLanguageName(code) {
 export default function ClinicDashboard() {
   const isClean = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('clean') === '1';
   const isPresentMode = typeof window !== 'undefined' && window.location.search.includes('present=1');
+  const isDevMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1';
 
   const [dayTab, setDayTab] = useState('today'); // 'today' or 'tomorrow'
   const [queueData, setQueueData] = useState(null);
   const [voiceLogs, setVoiceLogs] = useState([]);
+  const [devErrorCounts, setDevErrorCounts] = useState({});
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState('');
@@ -82,12 +84,37 @@ export default function ClinicDashboard() {
     }
   }, []);
 
+  // P3-3: Fetch error counts in dev mode (?dev=1)
+  const fetchErrorCounts = useCallback(async () => {
+    if (!isDevMode) return;
+    try {
+      const res = await fetch(`${API_BASE}/dev/error-counts`);
+      if (res.ok) {
+        const data = await res.json();
+        setDevErrorCounts(data.error_counts || {});
+      }
+    } catch (e) {}
+  }, [isDevMode]);
+
+  // Aggregate error counts from dev API and local voiceLogs
+  const combinedErrorCounts = useMemo(() => {
+    const counts = { ...devErrorCounts };
+    for (const log of voiceLogs) {
+      const code = log.error_code || log.error;
+      if (code && typeof code === 'string') {
+        counts[code] = (counts[code] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [devErrorCounts, voiceLogs]);
+
   // Initial and tab data fetch
   useEffect(() => {
     fetchQueue();
     fetchVoiceLogs();
     fetchUsage();
-  }, [fetchQueue, fetchVoiceLogs, fetchUsage]);
+    fetchErrorCounts();
+  }, [fetchQueue, fetchVoiceLogs, fetchUsage, fetchErrorCounts]);
 
   // WebSocket connection & auto-reconnect
   useEffect(() => {
@@ -543,8 +570,35 @@ export default function ClinicDashboard() {
           </div>
         </section>
 
-        {/* RIGHT COLUMN: Voice Activity Feed */}
+        {/* RIGHT COLUMN: Voice Activity Feed & Dev Error Counter */}
         <section className="col-right">
+          {/* P3-3: Error Counter Card in ?dev=1 mode */}
+          {isDevMode && !isPresentMode && !isClean && (
+            <div className="dash-card dev-error-counter-card" aria-label="Error counter by error code">
+              <div className="activity-card-header">
+                <div className="activity-header-left">
+                  <h2 className="card-section-title">⚠️ Error Counter (by error_code)</h2>
+                  <span className="dev-tag-badge">?dev=1</span>
+                </div>
+                <span className="activity-count-pill">
+                  {Object.values(combinedErrorCounts).reduce((a, b) => a + b, 0)} total
+                </span>
+              </div>
+              <div className="error-counter-chips">
+                {Object.entries(combinedErrorCounts).length > 0 ? (
+                  Object.entries(combinedErrorCounts).map(([code, count]) => (
+                    <span key={code} className="error-count-chip" data-testid={`error-chip-${code}`}>
+                      <span className="error-code-name">{code}</span>
+                      <span className="error-code-badge">{count}</span>
+                    </span>
+                  ))
+                ) : (
+                  <p className="no-errors-text">No errors recorded yet (0 errors).</p>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="dash-card activity-card">
             <div className="activity-card-header">
               <div className="activity-header-left">
