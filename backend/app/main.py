@@ -3,7 +3,7 @@ import subprocess
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.config import settings, validate_voices
+from backend.app.config import settings, validate_voices, get_voice_statuses, log_voice_config_startup, TTS_MODEL
 from backend.app.db import init_db
 from backend.app.routers.queue_router import router as queue_router
 from backend.app.routers.turn_router import router as turn_router
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
         clear_debug_audio_dir()
     # Scan audio cache and remove corrupted / invalid / < 0.3s audio
     scan_and_clean_audio_cache()
+    log_voice_config_startup()
     voices_valid, bad_voice = validate_voices()
     if not voices_valid:
         print(f"[Warning] Voice {bad_voice} is not supported by timbre-v2.5. Fix backend/.env")
@@ -114,12 +115,19 @@ def get_health():
         and not settings.GROQ_API_KEY.startswith("your_")
     )
     ffmpeg_found = _check_ffmpeg_version()
-    voices_configured = bool(
-        settings.VOICE_TE and settings.VOICE_TE.strip() and
-        settings.VOICE_EN and settings.VOICE_EN.strip()
-    )
-
     voices_valid, bad_voice = validate_voices()
+    status_te, status_en = get_voice_statuses()
+    voices_configured = bool(status_te != "empty" and status_en != "empty")
+
+    from backend.app.services.gnani import get_last_voice_error_reason
+    last_live_reason = get_last_voice_error_reason()
+    if status_te != "ok":
+        error_reason = status_te
+    elif status_en != "ok":
+        error_reason = status_en
+    else:
+        error_reason = last_live_reason
+
     rev_status = get_review_status()
     telugu_reviewed = bool(rev_status.get("reviewed_by_native_speaker", False))
 
@@ -135,6 +143,14 @@ def get_health():
         ffmpeg_found=ffmpeg_found,
         voices_configured=voices_configured,
         voices_valid=voices_valid,
+        voice_te_status=status_te,
+        voice_en_status=status_en,
+        tts_model=TTS_MODEL,
+        voice_te_lang="te-IN",
+        voice_en_lang="en-IN",
+        voice_te_voice=settings.VOICE_TE,
+        voice_en_voice=settings.VOICE_EN,
+        voice_error_reason=error_reason,
         invalid_voice=bad_voice,
         bad_voice=bad_voice,
         clinic_name=settings.CLINIC_NAME,

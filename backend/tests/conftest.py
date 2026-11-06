@@ -84,7 +84,9 @@ def setup_test_environment(monkeypatch):
     # Create DB schema
     Base.metadata.create_all(bind=test_engine)
 
-    # Set dummy secrets
+    # Set dummy secrets and test environment
+    monkeypatch.setattr(settings, "ENV", "test")
+    monkeypatch.setattr(settings, "DEMO_LIMITS", "off")
     monkeypatch.setattr(settings, "GNANI_API_KEY", "ci-dummy-key")
     monkeypatch.setattr(settings, "GROQ_API_KEY", "ci-dummy-groq")
     monkeypatch.setattr(settings, "VOICE_TE", "Lavanya")

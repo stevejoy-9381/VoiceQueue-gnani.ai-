@@ -219,6 +219,8 @@ Open in your browser:
 
 | Variable | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
+| `ENV` | String | `"development"` | Environment mode (`development` or `production`). |
+| `DEMO_LIMITS` | String | `""` | Set to `"on"` or `"off"`. Defaults to `"on"` in production, and `"off"` when `ENV=development` or request is from localhost / `127.0.0.1`. |
 | `GNANI_API_KEY` | String | `""` | Gnani API access key for Prisma STT and Timbre TTS. |
 | `VOICE_TE` | String | `"Lavanya"` | Allowed Timbre-v2.5 Telugu voice (`Lavanya`, `Lehara`, `Suhana`, etc.). |
 | `VOICE_EN` | String | `"Trupti"` | Allowed Timbre-v2.5 English voice (`Trupti`, `Devika`, `Pranav`, etc.). |

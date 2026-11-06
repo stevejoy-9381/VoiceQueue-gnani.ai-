@@ -245,21 +245,37 @@ const TRY_SAYING_CHIPS = {
   ],
 };
 
+const WORD_TO_NUM = {
+  // Telugu (1 to 20)
+  'ఒకటి': 1, 'రెండు': 2, 'మూడు': 3, 'నాలుగు': 4, 'ఐదు': 5,
+  'ఆరు': 6, 'ఏడు': 7, 'ఎనిమిది': 8, 'తొమ్మిది': 9, 'పది': 10,
+  'పదకొండు': 11, 'పన్నెండు': 12, 'పదమూడు': 13, 'పద్నాలుగు': 14, 'పదిహేను': 15,
+  'పదహారు': 16, 'పదిహేడు': 17, 'పద్దెనిమిది': 18, 'పందొమ్మిది': 19, 'ఇరవై': 20,
+  // English (1 to 20)
+  'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+  'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+  'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+  'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+};
+
 function extractNumberFromReply(text, token) {
-  if (token && token.number) return token.number;
-  const matchDigit = text.match(/\d+/);
-  if (matchDigit) return matchDigit[0];
-  const teNumbers = {
-    'ఒకటి': 1, 'రెండు': 2, 'మూడు': 3, 'నాలుగు': 4, 'ఐదు': 5,
-    'ఆరు': 6, 'ఏడు': 7, 'ఎనిమిది': 8, 'తొమ్మిది': 9, 'పది': 10
-  };
-  for (const [w, n] of Object.entries(teNumbers)) {
-    if (text.includes(w)) return n;
+  // 1. Check digits in reply text
+  if (text) {
+    const matchDigit = text.match(/\d+/);
+    if (matchDigit) return matchDigit[0];
+    // 2. Check number words in reply text (primary source of truth for spoken/written number)
+    const lowerText = text.toLowerCase();
+    for (const [w, n] of Object.entries(WORD_TO_NUM)) {
+      if (text.includes(w) || lowerText.includes(w)) return String(n);
+    }
   }
+  // 3. Fallback to token object if present
+  if (token && token.number) return String(token.number);
   return '1';
 }
 
-function getEnglishTranslation(replyText, token) {
+function getEnglishTranslation(replyText, token, serverTranslation) {
+  if (serverTranslation) return serverTranslation;
   if (!replyText || !/[\u0C00-\u0C7F]/.test(replyText)) return null;
 
   // Booked
@@ -328,7 +344,7 @@ function getEnglishTranslation(replyText, token) {
   if (replyText.includes('స్పష్టంగా లేదు లేదా పాడైంది')) {
     return 'Audio file is corrupt or unreadable. Please record again.';
   }
-  if (replyText.includes('డెమో పరిమితి')) {
+  if (replyText.includes('పరిమితి') || replyText.includes('డెమో')) {
     return 'Voice demo limit reached for now. Please watch the demo video or try typing.';
   }
 
@@ -381,16 +397,34 @@ export default function App() {
   const [replyText, setReplyText] = useState('');
   const [replyLanguage, setReplyLanguage] = useState('');
   const [replyAudioB64, setReplyAudioB64] = useState('');
+  const [replyEnglishTranslation, setReplyEnglishTranslation] = useState('');
   const [token, setToken] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [currentError, setCurrentError] = useState(null);
   const [tokenClearedNotice, setTokenClearedNotice] = useState('');
   const [tokenCalledAlert, setTokenCalledAlert] = useState(null);
+  const [limitReason, setLimitReason] = useState(null);
+  const [limitCounts, setLimitCounts] = useState(null);
+  const [demoVideoUrl, setDemoVideoUrl] = useState('');
+  const [voiceErrorReason, setVoiceErrorReason] = useState(null);
+
+  const [showOwnerBar, setShowOwnerBar] = useState(() => {
+    return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('owner') === '1';
+  });
+  const [ownerKeyVal, setOwnerKeyVal] = useState(() => {
+    try {
+      return sessionStorage.getItem('owner_key') || sessionStorage.getItem('vq_owner_key') || '';
+    } catch (e) {
+      return '';
+    }
+  });
 
   const tokenRef = useRef(token);
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
+
+  const activePollTokenIdRef = useRef(null);
 
   const languageRef = useRef(language);
   useEffect(() => {
@@ -403,6 +437,7 @@ export default function App() {
       setErrorMessage('');
       return;
     }
+    setTokenClearedNotice('');
     const resolved = resolveUserError(errInput, language);
     setCurrentError(resolved);
     setErrorMessage(resolved.message);
@@ -637,6 +672,9 @@ export default function App() {
       if (savedReply.token) {
         setToken(savedReply.token);
       }
+      if (savedReply.english_translation) {
+        setReplyEnglishTranslation(savedReply.english_translation);
+      }
     }
 
     const savedTokenId = getStoredTokenId();
@@ -658,6 +696,9 @@ export default function App() {
         if (data.voices_valid !== undefined) {
           setVoicesValid(Boolean(data.voices_valid));
           setInvalidVoice(data.invalid_voice || data.bad_voice || '');
+        }
+        if (data.voice_error_reason) {
+          setVoiceErrorReason(data.voice_error_reason);
         }
         if (!configured || data.voices_valid === false) {
           setShowTypeInput(true);
@@ -733,16 +774,33 @@ export default function App() {
 
   async function fetchTokenDetails(tokenId) {
     if (!tokenId) return;
+    const requestedId = Number(tokenId);
+    activePollTokenIdRef.current = requestedId;
     try {
-      const res = await fetch(`${API_BASE}/tokens/${tokenId}`);
+      const res = await fetch(`${API_BASE}/tokens/${requestedId}`);
+      // DO 5: Check if requestedId is still the current active token ID before processing response
+      const currentActiveId = tokenRef.current?.id
+        ? Number(tokenRef.current.id)
+        : (getStoredTokenId() ? Number(getStoredTokenId()) : null);
+
+      if (requestedId !== currentActiveId) {
+        // Discard late poll response for old token
+        return;
+      }
+
       if (res.ok) {
         const data = await res.json();
+        if (Number(data.id) !== currentActiveId) {
+          // Double check: discard if returned data id doesn't match active id
+          return;
+        }
         const snapshot = `${data.status}_${data.ahead_count ?? ''}`;
         if (lastTokenSnapshotRef.current !== snapshot) {
           lastTokenSnapshotRef.current = snapshot;
           lastChangeTimeRef.current = Date.now();
         }
         setToken(data);
+        tokenRef.current = data;
         // Requirement 2: Stop polling when status is done, cancelled or no_show
         if (['done', 'cancelled', 'no_show'].includes(data.status)) {
           try {
@@ -750,9 +808,11 @@ export default function App() {
           } catch (e) {}
         }
       } else if (res.status === 404) {
-        // Requirement 1: On a 404 from GET /tokens/{id}: stop polling, remove token_id from localStorage (inside try/catch),
-        // clear the token card, and show 'Your token was cleared. Say or type a request to book a new one.'
+        if (requestedId !== currentActiveId) {
+          return;
+        }
         setToken(null);
+        tokenRef.current = null;
         try {
           localStorage.removeItem('vq_token_id');
         } catch (e) {}
@@ -1086,15 +1146,42 @@ export default function App() {
     setReplyText(data.reply_text || '');
     setReplyLanguage(determinedLang);
     setReplyAudioB64(data.reply_audio_base64 || '');
+    setReplyEnglishTranslation(data.english_translation || '');
     setAudioSource(data.audio_source || 'none');
     setAudioDuration(data.audio_duration_seconds ?? null);
     setAudioBytes(data.audio_bytes ?? null);
     setAudioServerError(data.audio_error || '');
     setStageTimesMs(data.stage_times_ms || null);
 
-    if (data.token) {
+    if (data.limit_reason) {
+      setLimitReason(data.limit_reason);
+    }
+    if (data.limit_counts) {
+      setLimitCounts(data.limit_counts);
+    }
+    if (data.voice_error_reason) {
+      setVoiceErrorReason(data.voice_error_reason);
+    }
+    if (data.demo_video_url) {
+      setDemoVideoUrl(data.demo_video_url);
+    }
+
+    if (data.intent === 'BOOK' && data.token) {
+      // DO 4: Immediately set current token, save in localStorage (inside try/catch), replace token card, restart polling for NEW id only
       setToken(data.token);
+      tokenRef.current = data.token;
+      activePollTokenIdRef.current = Number(data.token.id);
+      try {
+        localStorage.setItem('vq_token_id', String(data.token.id));
+      } catch (e) {}
+      setTokenClearedNotice('');
+    } else if (data.token) {
+      setToken(data.token);
+      tokenRef.current = data.token;
+      activePollTokenIdRef.current = Number(data.token.id);
       saveStoredTokenId(data.token.id);
+      setTokenClearedNotice('');
+    } else if (!data.error && !data.error_code) {
       setTokenClearedNotice('');
     }
 
@@ -1104,15 +1191,18 @@ export default function App() {
       reply_language: determinedLang,
       reply_audio_base64: data.reply_audio_base64,
       token: data.token,
+      english_translation: data.english_translation,
     });
 
     if (data.error || data.error_code) {
       showError({ error: data.error, error_code: data.error_code, detail: data.error });
+      setTokenClearedNotice('');
     } else {
       showError(null);
+      setTokenClearedNotice('');
     }
 
-    if (data.error_code === 'demo_limit') {
+    if (data.error_code === 'demo_limit' || data.error_code === 'credit_limit') {
       setShowTypeInput(true);
     }
 
@@ -1276,7 +1366,7 @@ export default function App() {
 
       const headers = {};
       try {
-        const ownerKey = sessionStorage.getItem('owner_key');
+        const ownerKey = sessionStorage.getItem('owner_key') || sessionStorage.getItem('vq_owner_key');
         if (ownerKey) {
           headers['X-Owner-Key'] = ownerKey;
         }
@@ -1345,7 +1435,7 @@ export default function App() {
 
       const headers = { 'Content-Type': 'application/json' };
       try {
-        const ownerKey = sessionStorage.getItem('owner_key');
+        const ownerKey = sessionStorage.getItem('owner_key') || sessionStorage.getItem('vq_owner_key');
         if (ownerKey) {
           headers['X-Owner-Key'] = ownerKey;
         }
@@ -1441,6 +1531,67 @@ export default function App() {
         <div className="patient-limit-banner">
           Voice is paused to save credits. Typing still works.
         </div>
+      )}
+
+      {/* Hidden Owner Key input bar via ?owner=1 */}
+      {showOwnerBar && (
+        <section
+          className="owner-key-bar"
+          style={{
+            background: '#2C3E50',
+            color: '#FFFFFF',
+            padding: '8px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.85rem',
+            borderBottom: '2px solid #1E293B',
+          }}
+          aria-label="Owner Key Configuration"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🔑 <strong>Owner Mode:</strong></span>
+            <input
+              type="password"
+              placeholder="Enter OWNER_KEY"
+              value={ownerKeyVal}
+              onChange={(e) => {
+                const val = e.target.value;
+                setOwnerKeyVal(val);
+                try {
+                  if (val.trim()) {
+                    sessionStorage.setItem('owner_key', val.trim());
+                  } else {
+                    sessionStorage.removeItem('owner_key');
+                  }
+                } catch (err) {}
+              }}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: '1px solid #CCC',
+                color: '#111',
+                fontSize: '0.85rem',
+              }}
+              data-testid="owner-key-input"
+            />
+            <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>(Saved in sessionStorage only)</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowOwnerBar(false)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#FFF',
+              cursor: 'pointer',
+              fontSize: '1rem',
+            }}
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </section>
       )}
 
       {/* 1. Header & Language Switch */}
@@ -1724,10 +1875,34 @@ export default function App() {
                   {currentError.suggestedAction}
                 </button>
               )}
+              {(currentError.code === 'demo_limit' || currentError.code === 'credit_limit') && (demoVideoUrl || (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_DEMO_VIDEO_URL)) && (
+                <a
+                  href={demoVideoUrl || import.meta.env.VITE_DEMO_VIDEO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="demo-video-link-btn"
+                  style={{
+                    marginLeft: '8px',
+                    display: 'inline-block',
+                    padding: '4px 10px',
+                    backgroundColor: '#1E40AF',
+                    color: '#FFF',
+                    borderRadius: '4px',
+                    textDecoration: 'none',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  ▶ Demo Video
+                </a>
+              )}
             </div>
-            {isDevMode && currentError.rawDetails && (
+            {isDevMode && (
               <div className="error-alert-dev">
                 [dev: {currentError.code}] {currentError.rawDetails}
+                {voiceErrorReason && ` | voice_error_reason: ${voiceErrorReason}`}
+                {limitReason && ` | limit_reason: ${limitReason}`}
+                {limitCounts && ` | counts: ip=${limitCounts.ip_count}/${limitCounts.ip_limit} sess=${limitCounts.sess_count}/${limitCounts.sess_limit} daily=${limitCounts.daily_count}/${limitCounts.daily_cap}`}
               </div>
             )}
           </div>
@@ -1774,9 +1949,9 @@ export default function App() {
         <p className="card-content">
           {replyText || <span className="placeholder-text">{t.replyPlaceholder}</span>}
         </p>
-        {getEnglishTranslation(replyText, token) && (
+        {getEnglishTranslation(replyText, token, replyEnglishTranslation) && (
           <p className="reply-translation">
-            <span className="translation-tag">EN:</span> {getEnglishTranslation(replyText, token)}
+            <span className="translation-tag">EN:</span> {getEnglishTranslation(replyText, token, replyEnglishTranslation)}
           </p>
         )}
         {replyText && replyLanguage && (
@@ -1786,7 +1961,7 @@ export default function App() {
         )}
 
         {/* Requirement 10: If there is no audio show 'Voice reply is not available for this answer' */}
-        {!replyAudioB64 && replyText && (
+        {!replyAudioB64 && replyText && currentError?.code !== 'demo_limit' && currentError?.code !== 'credit_limit' && (
           <div
             className="reply-audio-unavailable"
             style={{ fontSize: '0.85rem', color: '#6F4E37', marginTop: '10px' }}
@@ -1851,6 +2026,23 @@ export default function App() {
             }}
           >
             [Dev Latency] total: {stageTimesMs.total != null ? stageTimesMs.total + 'ms' : '-'} | convert: {stageTimesMs.convert != null ? stageTimesMs.convert + 'ms' : '-'} | clean: {stageTimesMs.clean != null ? stageTimesMs.clean + 'ms' : '-'} | quality: {stageTimesMs.quality_gates != null ? stageTimesMs.quality_gates + 'ms' : '-'} | stt: {stageTimesMs.stt != null ? stageTimesMs.stt + 'ms' : '-'} | intent: {stageTimesMs.intent != null ? stageTimesMs.intent + 'ms' : '-'} | queue: {stageTimesMs.queue_action != null ? stageTimesMs.queue_action + 'ms' : '-'} | reply: {stageTimesMs.reply_choice != null ? stageTimesMs.reply_choice + 'ms' : '-'} | tts: {stageTimesMs.tts_or_cache != null ? stageTimesMs.tts_or_cache + 'ms' : '-'} | resp: {stageTimesMs.response_build != null ? stageTimesMs.response_build + 'ms' : '-'}
+          </div>
+        )}
+
+        {/* Requirement 1: Limit diagnostic line, visible only with ?dev=1 */}
+        {isDevMode && (limitReason || limitCounts) && (
+          <div
+            className="dev-limits-line"
+            data-testid="dev-limits-line"
+            style={{
+              marginTop: '6px',
+              fontSize: '0.78rem',
+              color: '#8B0000',
+              opacity: 0.95,
+              fontFamily: 'monospace',
+            }}
+          >
+            [Dev Limits] reason: {limitReason || 'none'} | ip_10m: {limitCounts?.ip_count ?? '-'}/{limitCounts?.ip_limit ?? '-'} | session: {limitCounts?.sess_count ?? '-'}/{limitCounts?.sess_limit ?? '-'} | daily: {limitCounts?.daily_count ?? '-'}/{limitCounts?.daily_cap ?? '-'} (reserve: {limitCounts?.reserve ?? '-'})
           </div>
         )}
 
@@ -1926,7 +2118,7 @@ export default function App() {
         </section>
       )}
 
-      {tokenClearedNotice && (
+      {tokenClearedNotice && !currentError && (
         <section
           className="card token-cleared-notice"
           role="status"
@@ -1953,6 +2145,15 @@ export default function App() {
             <span className="token-label">{t.tokenLabel}</span>
             <span className="token-number">#{token.number}</span>
           </div>
+          {isDevMode && (
+            <div
+              className="dev-token-info"
+              data-testid="dev-token-info"
+              style={{ fontSize: '0.75rem', color: '#6F4E37', opacity: 0.8, marginTop: '2px' }}
+            >
+              dev: token_id={token.id}, token_number={token.number}
+            </div>
+          )}
           <div className="token-ahead-row">
             {token.status === 'in_consult' ? (
               <p className="ahead-highlight">{t.doctorSeeing}</p>

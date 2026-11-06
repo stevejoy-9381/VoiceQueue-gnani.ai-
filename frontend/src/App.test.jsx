@@ -649,4 +649,306 @@ describe('Patient App Component Tests (Vitest + RTL)', () => {
     // Verify no new /turn network calls were triggered
     expect(fetchTurnCount).toBe(0)
   })
+
+  it('16. Demo limit displays single-language message with Type instead button and no voice-unavailable or stale-token notes', async () => {
+    // Pre-populate with demo_limit reply
+    localStorage.setItem(
+      'vq_last_reply',
+      JSON.stringify({
+        transcript: '',
+        reply_text: 'Voice demo limit reached for now. Please watch the demo video or try typing.',
+        reply_audio_base64: '',
+        token: null,
+      })
+    )
+
+    render(<App />)
+    const enBtn = screen.getByRole('button', { name: 'English' })
+    await userEvent.click(enBtn)
+
+    // Send a typed turn that returns demo_limit
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/text/turn')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              transcript: 'hello',
+              reply_text: 'Voice demo limit reached for now. Please watch the demo video or try typing.',
+              reply_audio_base64: '',
+              token: null,
+              error: 'Voice demo limit reached for now. Please watch the demo video or try typing.',
+              error_code: 'demo_limit',
+              limit_reason: 'ip_window',
+            }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      })
+    })
+
+    const typeInputBtn = screen.getByRole('button', { name: /Type instead of speaking/i })
+    await userEvent.click(typeInputBtn)
+
+    const textInput = screen.getByPlaceholderText(/e\.g\. need a token tomorrow/i)
+    await userEvent.type(textInput, 'need token{enter}')
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Voice demo limit reached for now/i).length).toBeGreaterThan(0)
+    })
+
+    // Verify "Voice reply is not available for this answer" is NOT rendered
+    expect(screen.queryByText(/Voice reply is not available for this answer/i)).toBeNull()
+
+    // Verify "Your token was cleared" is NOT rendered
+    expect(screen.queryByText(/Your token was cleared/i)).toBeNull()
+  })
+
+  it('17. ?dev=1 displays [Dev Limits] diagnostic line with reason and counts', async () => {
+    delete window.location
+    window.location = new URL('http://localhost:5173/?dev=1')
+
+    render(<App />)
+
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/text/turn')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              transcript: 'test',
+              reply_text: 'ok',
+              reply_audio_base64: '',
+              token: null,
+              error: null,
+              error_code: null,
+              limit_reason: 'session_cap',
+              limit_counts: {
+                ip_count: 3,
+                ip_limit: 6,
+                sess_count: 10,
+                sess_limit: 10,
+                daily_count: 45,
+                daily_cap: 150,
+                reserve: 40,
+              },
+            }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      })
+    })
+
+    const typeInputBtn = screen.getByRole('button', { name: /టైప్ చేయండి|Type instead/i })
+    await userEvent.click(typeInputBtn)
+
+    const textInput = screen.getByRole('textbox')
+    await userEvent.type(textInput, 'test{enter}')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dev-limits-line')).toBeInTheDocument()
+      expect(screen.getByTestId('dev-limits-line')).toHaveTextContent(/reason: session_cap/)
+      expect(screen.getByTestId('dev-limits-line')).toHaveTextContent(/session: 10\/10/)
+    })
+  })
+
+  it('18. ?owner=1 renders owner key configuration bar and saves key in sessionStorage', async () => {
+    delete window.location
+    window.location = new URL('http://localhost:5173/?owner=1')
+    sessionStorage.clear()
+
+    render(<App />)
+
+    const ownerInput = screen.getByTestId('owner-key-input')
+    expect(ownerInput).toBeInTheDocument()
+
+    await userEvent.type(ownerInput, 'my_secret_owner_key')
+    expect(sessionStorage.getItem('owner_key')).toBe('my_secret_owner_key')
+  })
+
+  it('19. Two bookings in a row update card, reply text and translation to the newest token', async () => {
+    let callCount = 0
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/text/turn')) {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                transcript: 'repu token kavali',
+                intent: 'BOOK',
+                reply_text: 'మీ టోకెన్ రేపు నంబర్ పదహారు బుక్ అయింది. దయచేసి సమయానికి క్లినిక్‌కి రండి.',
+                english_translation: 'Your token for tomorrow is number 16. Please come to the clinic on time.',
+                token: { id: 16, number: 16, status: 'waiting', date: '2026-11-07' },
+              }),
+          })
+        } else {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                transcript: 'I need a token for tomorrow',
+                intent: 'BOOK',
+                reply_text: 'Your token for tomorrow is number seventeen. Please come to the clinic on time.',
+                english_translation: 'Your token for tomorrow is number 17. Please come to the clinic on time.',
+                token: { id: 17, number: 17, status: 'waiting', date: '2026-11-07' },
+              }),
+          })
+        }
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ gnani_configured: true, voices_valid: true, status: 'ok' }),
+      })
+    })
+
+    render(<App />)
+
+    const typeAccordion = screen.getByText(/టైప్ చేయండి|Type instead/i)
+    await userEvent.click(typeAccordion)
+
+    const input = screen.getByRole('textbox')
+    const sendBtn = screen.getByRole('button', { name: /పంపండి|Send/i })
+
+    // Booking 1: Token 16
+    await userEvent.type(input, 'repu token kavali')
+    await userEvent.click(sendBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('#16')).toBeInTheDocument()
+      expect(screen.getByText(/Your token for tomorrow is number 16/i)).toBeInTheDocument()
+    })
+
+    // Booking 2: Token 17
+    await userEvent.clear(input)
+    await userEvent.type(input, 'I need a token for tomorrow')
+    await userEvent.click(sendBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('#17')).toBeInTheDocument()
+      expect(screen.getByText(/seventeen/i)).toBeInTheDocument()
+      expect(screen.queryByText('#16')).not.toBeInTheDocument()
+    })
+  })
+
+  it('20. A late poll response for an old token does not overwrite the new card', async () => {
+    let latePollResolve = null
+    const latePollPromise = new Promise((resolve) => {
+      latePollResolve = resolve
+    })
+
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/tokens/16')) {
+        // Delayed poll for old token 16
+        return latePollPromise
+      }
+      if (u.includes('/text/turn')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              transcript: 'repu token kavali',
+              intent: 'BOOK',
+              reply_text: 'మీ టోకెన్ రేపు నంబర్ పదిహేడు బుక్ అయింది.',
+              english_translation: 'Your token for tomorrow is number 17. Please come to the clinic on time.',
+              token: { id: 17, number: 17, status: 'waiting', date: '2026-11-07' },
+            }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ gnani_configured: true, voices_valid: true, status: 'ok' }),
+      })
+    })
+
+    // Pre-populate old token 16 in storage
+    localStorage.setItem('vq_token_id', '16')
+    render(<App />)
+
+    // A turn books token 17
+    const typeAccordion = screen.getByText(/టైప్ చేయండి|Type instead/i)
+    await userEvent.click(typeAccordion)
+
+    const input = screen.getByRole('textbox')
+    const sendBtn = screen.getByRole('button', { name: /పంపండి|Send/i })
+    await userEvent.type(input, 'repu token kavali')
+    await userEvent.click(sendBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('#17')).toBeInTheDocument()
+    })
+
+    // Now late poll for token 16 finally resolves
+    latePollResolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 16, number: 16, status: 'waiting', date: '2026-11-07' }),
+    })
+
+    // The card MUST still show #17, never reverting to #16
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByText('#17')).toBeInTheDocument()
+    expect(screen.queryByText('#16')).not.toBeInTheDocument()
+  })
+
+  it('21. ?dev=1 displays developer info for token id and number inside the token card', async () => {
+    delete window.location
+    window.location = new URL('http://localhost:5173/?dev=1')
+
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/text/turn')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              transcript: 'repu token kavali',
+              intent: 'BOOK',
+              reply_text: 'మీ టోకెన్ రేపు నంబర్ పదిహేడు బుక్ అయింది.',
+              english_translation: 'Your token for tomorrow is number 17. Please come to the clinic on time.',
+              token: { id: 17, number: 17, status: 'waiting', date: '2026-11-07' },
+            }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ gnani_configured: true, voices_valid: true, status: 'ok' }),
+      })
+    })
+
+    render(<App />)
+
+    const typeAccordion = screen.getByText(/టైప్ చేయండి|Type instead/i)
+    await userEvent.click(typeAccordion)
+
+    const input = screen.getByRole('textbox')
+    const sendBtn = screen.getByRole('button', { name: /పంపండి|Send/i })
+    await userEvent.type(input, 'repu token kavali')
+    await userEvent.click(sendBtn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dev-token-info')).toBeInTheDocument()
+      expect(screen.getByTestId('dev-token-info')).toHaveTextContent(/dev: token_id=17, token_number=17/)
+    })
+  })
 })

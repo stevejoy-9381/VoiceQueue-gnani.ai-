@@ -138,14 +138,15 @@ def voice_turn(
     owner_key = request.headers.get("x-owner-key") if request else None
     is_owner_req = credit_protection.is_owner(owner_key)
 
-    limit_err = credit_protection.check_voice_turn_limit(
+    limit_err, limit_reason, limit_counts = credit_protection.check_voice_turn_limit(
         ip=client_ip,
         session_id=session_id,
         is_owner_req=is_owner_req,
         db=db,
+        request=request,
     )
     if limit_err:
-        limit_msg = credit_protection.get_demo_limit_message()
+        limit_msg = credit_protection.get_demo_limit_message(language)
         total_limit_ms = round((time.perf_counter() - t_turn_start) * 1000.0, 2)
         limit_stage_times = {
             "convert": 0.0,
@@ -178,26 +179,36 @@ def voice_turn(
             db.commit()
             broadcast_voice_log()
             broadcast_queue_change("")
-            if err_code:
+            if limit_err:
                 from backend.app.services.monitoring import record_error
-                record_error(err_code)
+                record_error(limit_err)
         except Exception:
             pass
+
+        lp = "te" if language.startswith("te") else "en"
+        cached_limit_audio = audio_service.get_cached_audio(f"demo_limit_{lp}")
+        limit_audio_b64 = None
+        if cached_limit_audio:
+            limit_audio_b64 = base64.b64encode(cached_limit_audio).decode("utf-8")
 
         return TurnResponse(
             transcript="",
             detected_language=language,
+            reply_language="Telugu" if language.startswith("te") else "English",
             intent="LIMIT",
             reply_text=limit_msg,
-            reply_audio_base64=None,
+            reply_audio_base64=limit_audio_b64,
             token=None,
             pending_confirm=False,
             error=limit_msg,
-            error_code="demo_limit",
+            error_code=limit_err,
+            limit_reason=limit_reason,
+            limit_counts=limit_counts,
+            demo_video_url=settings.DEMO_VIDEO_URL or None,
             audio_stats=None,
-            audio_source="none",
+            audio_source="cache" if limit_audio_b64 else "none",
             audio_duration_seconds=None,
-            audio_bytes=None,
+            audio_bytes=len(cached_limit_audio) if cached_limit_audio else None,
             audio_error="demo_limit",
             stage_times_ms=limit_stage_times,
         )
@@ -215,11 +226,13 @@ def voice_turn(
             filename=audio.filename or "recording.wav",
             clean=clean,
         )
-        credit_protection.record_voice_turn(client_ip, session_id)
 
         t_stt = time.perf_counter()
         stt_result = gnani.stt(wav_bytes, user_lang=language)
         stt_ms = (time.perf_counter() - t_stt) * 1000.0
+
+        # Only real successful STT calls count towards voice turn limits
+        credit_protection.record_voice_turn(client_ip, session_id)
 
         transcript = stt_result.get("transcript", "")
         detected_lang = stt_result.get("language", language)
@@ -397,6 +410,9 @@ def voice_turn(
             pending_confirm=False,
             error=friendly_error,
             error_code=err_code,
+            limit_reason=limit_reason if err_code in ("demo_limit", "credit_limit") else None,
+            limit_counts=limit_counts if err_code in ("demo_limit", "credit_limit") else None,
+            demo_video_url=settings.DEMO_VIDEO_URL or None,
             audio_stats=None,
             audio_source=a_source,
             audio_duration_seconds=a_dur,
@@ -404,7 +420,7 @@ def voice_turn(
             audio_error=a_err or "turn_error",
         )
 
-    return turn_service.process_turn(
+    turn_resp = turn_service.process_turn(
         db=db,
         transcript=transcript,
         detected_lang=detected_lang,
@@ -420,6 +436,41 @@ def voice_turn(
         turn_start_time=t_turn_start,
         is_compare=is_compare_turn,
     )
+    turn_resp.limit_reason = limit_reason
+    turn_resp.limit_counts = limit_counts
+    if settings.DEMO_VIDEO_URL:
+        turn_resp.demo_video_url = settings.DEMO_VIDEO_URL
+    return turn_resp
+
+
+@router.get("/dev/limits")
+def dev_limits(request: Request, db: Session = Depends(get_db)):
+    """
+    Returns current rate-limit counters and configured limits.
+    Enabled only when DEV_ENDPOINTS=true.
+    """
+    if not settings.DEV_ENDPOINTS:
+        raise HTTPException(
+            status_code=403,
+            detail="Developer endpoints are disabled. Set DEV_ENDPOINTS=true in backend/.env",
+        )
+    client_ip = credit_protection.get_client_ip(request)
+    return credit_protection.get_limits_status(db=db, client_ip=client_ip)
+
+
+@router.post("/dev/reset-limits")
+def dev_reset_limits():
+    """
+    Resets in-memory per-IP and per-session voice limits.
+    Enabled only when DEV_ENDPOINTS=true.
+    """
+    if not settings.DEV_ENDPOINTS:
+        raise HTTPException(
+            status_code=403,
+            detail="Developer endpoints are disabled. Set DEV_ENDPOINTS=true in backend/.env",
+        )
+    credit_protection.reset_limits()
+    return {"status": "ok", "message": "Demo rate limits reset successfully"}
 
 
 @router.get("/dev/latency")

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict
 
 
@@ -10,6 +10,14 @@ class HealthResponse(BaseModel):
     ffmpeg_found: bool
     voices_configured: bool
     voices_valid: bool = True
+    voice_te_status: str = "ok"
+    voice_en_status: str = "ok"
+    tts_model: str = "timbre-v2.5"
+    voice_te_lang: str = "te-IN"
+    voice_en_lang: str = "en-IN"
+    voice_te_voice: Optional[str] = None
+    voice_en_voice: Optional[str] = None
+    voice_error_reason: Optional[str] = None
     invalid_voice: Optional[str] = None
     bad_voice: Optional[str] = None
     clinic_name: Optional[str] = None
@@ -76,6 +84,11 @@ class TurnResponse(BaseModel):
     audio_bytes: Optional[int] = None
     audio_error: Optional[str] = None
     stage_times_ms: Optional[dict[str, float]] = None
+    limit_reason: Optional[str] = None
+    limit_counts: Optional[dict[str, Any]] = None
+    demo_video_url: Optional[str] = None
+    english_translation: Optional[str] = None
+    voice_error_reason: Optional[str] = None
 
 
 class RetryAudioRequest(BaseModel):
@@ -90,6 +103,11 @@ class RetryAudioResponse(BaseModel):
     audio_bytes: Optional[int] = None
     audio_error: Optional[str] = None
     stage_times_ms: Optional[dict[str, float]] = None
+    limit_reason: Optional[str] = None
+    limit_counts: Optional[dict[str, Any]] = None
+    demo_video_url: Optional[str] = None
+    english_translation: Optional[str] = None
+    voice_error_reason: Optional[str] = None
 
 
 class VoiceLogItem(BaseModel):

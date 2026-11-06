@@ -5,9 +5,10 @@ import re
 import threading
 import time
 from datetime import datetime, timezone
+from typing import Optional
 import httpx
 
-from backend.app.config import settings, VALID_TIMBRE_VOICES
+from backend.app.config import settings, VALID_TIMBRE_VOICES, clean_voice_name
 from backend.app.db import SessionLocal, init_db
 from backend.app.models import GnaniUsage
 
@@ -81,9 +82,34 @@ class CreditLimitError(GnaniAPIError):
     pass
 
 
+_last_voice_error_reason: Optional[str] = None
+
+
+def get_last_voice_error_reason() -> Optional[str]:
+    return _last_voice_error_reason
+
+
+def set_last_voice_error_reason(reason: Optional[str]):
+    global _last_voice_error_reason
+    _last_voice_error_reason = reason
+
+
+def sanitize_gnani_error(error_text: str) -> str:
+    """Removes API keys or authorization tokens from error messages."""
+    if not error_text:
+        return ""
+    sanitized = re.sub(r"(?i)(key|token|auth|secret)[=:\s]+[A-Za-z0-9_\-]+", r"\1=[MASKED]", str(error_text))
+    if settings.GNANI_API_KEY:
+        sanitized = sanitized.replace(settings.GNANI_API_KEY, "[MASKED_KEY]")
+    return sanitized.strip()
+
+
 class VoiceNotSupportedError(GnaniAPIError):
     """Voice name is not supported by timbre-v2.5 model."""
-    pass
+
+    def __init__(self, message: str, reason_code: str = "voice_not_in_list"):
+        super().__init__(message)
+        self.reason_code = reason_code
 
 
 class TTSInvalidAudioError(GnaniAPIError):
@@ -185,10 +211,21 @@ def _execute_with_lock_and_retry(call_fn):
 
         if response.status_code == 400:
             resp_text = response.text
-            if "voice" in resp_text.lower():
-                print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
-                raise VoiceNotSupportedError(f"TTS voice rejected by Gnani API: {resp_text}")
-            raise GnaniAPIError(f"Gnani request failed (400): {resp_text}")
+            sanitized_resp = sanitize_gnani_error(resp_text)
+            print(f"[Gnani API 400] {sanitized_resp}")
+
+            resp_lower = resp_text.lower()
+            if "model" in resp_lower:
+                reason_code = "wrong_model_for_voice"
+            elif "language" in resp_lower or "lang" in resp_lower:
+                reason_code = "wrong_language_for_voice"
+            elif "voice" in resp_lower or "speaker" in resp_lower or "unsupported" in resp_lower or "not found" in resp_lower:
+                reason_code = "voice_not_in_list"
+            else:
+                reason_code = "gnani_400_other"
+
+            set_last_voice_error_reason(reason_code)
+            raise VoiceNotSupportedError(f"TTS voice rejected by Gnani API: {sanitized_resp}", reason_code=reason_code)
         elif response.status_code == 401:
             raise GnaniAuthError("Gnani API key is invalid (HTTP 401).")
         elif response.status_code == 402:
@@ -285,19 +322,28 @@ def tts(text: str, lang: str, voice: str | None = None) -> bytes:
 
     # Determine TTS language code and voice pair
     tts_lang = "te-IN" if (lang or "").startswith("te") else "en-IN"
-    expected_voice = settings.VOICE_TE if tts_lang == "te-IN" else settings.VOICE_EN
-    if voice and voice != expected_voice:
-        raise VoiceNotSupportedError(
-            f"Invalid voice '{voice}' for language '{tts_lang}'. Expected '{expected_voice}'."
-        )
-    selected_voice = voice or expected_voice
+    target_env_voice = settings.VOICE_TE if tts_lang == "te-IN" else settings.VOICE_EN
+    cleaned_voice, status = clean_voice_name(target_env_voice, lang=tts_lang)
 
-    # Check against supported timbre-v2.5 voices before calling API
-    if not selected_voice or selected_voice not in VALID_TIMBRE_VOICES:
-        print(f"[TTS Error] Voice '{selected_voice}' is not supported by model timbre-v2.5.")
+    if status != "ok" or not cleaned_voice:
+        set_last_voice_error_reason(status)
         raise VoiceNotSupportedError(
-            f"Voice '{selected_voice}' is not supported by model timbre-v2.5. Set VOICE_EN or VOICE_TE in backend/.env"
+            f"Configured voice '{target_env_voice}' is not supported for language '{tts_lang}' ({status}).",
+            reason_code=status,
         )
+
+    if voice:
+        cleaned_param, p_status = clean_voice_name(voice, lang=tts_lang)
+        if p_status != "ok" or cleaned_param != cleaned_voice:
+            reason = p_status if p_status != "ok" else "wrong_language_for_voice"
+            set_last_voice_error_reason(reason)
+            raise VoiceNotSupportedError(
+                f"Invalid voice '{voice}' for language '{tts_lang}'. Expected '{cleaned_voice}'.",
+                reason_code=reason,
+            )
+        selected_voice = cleaned_param
+    else:
+        selected_voice = cleaned_voice
 
     headers = {
         "X-API-Key-ID": settings.GNANI_API_KEY,
@@ -345,9 +391,10 @@ def tts(text: str, lang: str, voice: str | None = None) -> bytes:
         raise
     except Exception as exc:
         _log_call_usage(kind="tts", cached=False, ok=False)
-        if "voice" in str(exc).lower():
-            print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
-            raise VoiceNotSupportedError(str(exc))
+        exc_str = str(exc)
+        if "voice" in exc_str.lower():
+            set_last_voice_error_reason("voice_not_in_list")
+            raise VoiceNotSupportedError(exc_str, reason_code="voice_not_in_list")
         raise
 
 

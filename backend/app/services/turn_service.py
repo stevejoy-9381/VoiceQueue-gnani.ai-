@@ -6,10 +6,10 @@ import time
 from typing import Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 
-from backend.app.config import settings, VALID_TIMBRE_VOICES
+from backend.app.config import settings, VALID_TIMBRE_VOICES, clean_voice_name
 from backend.app.models import Token, VoiceLog
 from backend.app.routers.queue_router import _to_token_response
-from backend.app.schemas import TurnResponse
+from backend.app.schemas import TokenResponse, TurnResponse
 from backend.app.services import audio, gnani, intent as intent_service, privacy, queue_service, replies
 from backend.app.services.broadcast import broadcast_queue_change, broadcast_voice_log
 from backend.app.services.latency_tracker import latency_tracker
@@ -238,17 +238,21 @@ def _generate_or_get_audio(
     Returns: AudioResult(wav_bytes, source, duration, bytes, friendly_err, audio_error)
     """
     is_te = (tts_lang or "").startswith("te")
-    target_voice = settings.VOICE_TE if is_te else settings.VOICE_EN
+    lang_code = "te-IN" if is_te else "en-IN"
+    raw_target = settings.VOICE_TE if is_te else settings.VOICE_EN
+    cleaned_voice, status = clean_voice_name(raw_target, lang=lang_code)
+    target_voice = cleaned_voice or raw_target
 
-    # Check against supported timbre-v2.5 voice list before calling
-    if not target_voice or target_voice not in VALID_TIMBRE_VOICES:
-        _safe_print(f"[TTS Audio] Voice '{target_voice}' is not supported by timbre-v2.5. Skipping TTS call.")
+    # Validate against language-specific allowed list for timbre-v2.5
+    if status != "ok" or not target_voice:
+        gnani.set_last_voice_error_reason(status)
+        _safe_print(f"[TTS Audio] Voice '{target_voice}' is not supported for {lang_code} ({status}). Skipping TTS call.")
         friendly_msg = (
             "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
             if is_te
             else "Voice reply is currently unavailable."
         )
-        audio_err = f"voice_not_supported: {target_voice}"
+        audio_err = f"voice_not_supported: {status} ({target_voice})"
         _log_audio_line(tts_lang, "none", 0.0, 0)
         return AudioResult(None, "none", None, None, friendly_msg, audio_err)
 
@@ -297,14 +301,15 @@ def _generate_or_get_audio(
         _log_audio_line(tts_lang, "none", 0.0, 0)
         return AudioResult(None, "none", None, None, friendly_msg, "credit_limit")
     except gnani.VoiceNotSupportedError as e:
-        _safe_print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
+        gnani.set_last_voice_error_reason(e.reason_code)
+        _safe_print(f"TTS voice rejected ({e.reason_code}): set VOICE_EN or VOICE_TE in backend/.env")
         _safe_print(f"[TTS Audio Error Detail] {e}")
         friendly_msg = (
             "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
             if is_te
             else "Voice reply is currently unavailable."
         )
-        audio_err = f"voice_not_supported: {e}"
+        audio_err = f"voice_not_supported: {e.reason_code}"
         _log_audio_line(tts_lang, "none", 0.0, 0)
         return AudioResult(None, "none", None, None, friendly_msg, audio_err)
     except gnani.TTSInvalidAudioError as e:
@@ -319,13 +324,14 @@ def _generate_or_get_audio(
     except Exception as e:
         detail = str(e)
         if "voice" in detail.lower():
+            gnani.set_last_voice_error_reason("voice_not_in_list")
             _safe_print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
             friendly_msg = (
                 "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
                 if is_te
                 else "Voice reply is currently unavailable."
             )
-            audio_err = f"voice_not_supported: {detail}"
+            audio_err = "voice_not_supported: voice_not_in_list"
             _log_audio_line(tts_lang, "none", 0.0, 0)
             return AudioResult(None, "none", None, None, friendly_msg, audio_err)
         short_err = "tts_invalid_audio" if "invalid" in detail.lower() else "tts_failed"
@@ -447,6 +453,9 @@ def process_turn(
         times["intent"] = round((time.perf_counter() - t_intent) * 1000.0, 2)
 
         active_token: Optional[Token] = None
+        token_resp: Optional[TokenResponse] = None
+        reply_token_num: Optional[int] = None
+        english_translation: Optional[str] = None
         pending_confirm = False
         reply_text = ""
         cache_key: Optional[str] = None
@@ -465,29 +474,70 @@ def process_turn(
                     _clear_pending(session_id)
                     t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.cancelled(template_lang)
+                    english_translation = "Your token has been cancelled successfully."
                     active_token = cancelled_tok
+                    token_resp = TokenResponse(
+                        id=cancelled_tok.id,
+                        number=cancelled_tok.number,
+                        date=cancelled_tok.date,
+                        label=cancelled_tok.label,
+                        language=cancelled_tok.language,
+                        status=cancelled_tok.status,
+                        created_at=cancelled_tok.created_at,
+                        ahead_count=None,
+                    )
+                    reply_token_num = token_resp.number
                 except Exception:
                     queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     _clear_pending(session_id)
                     t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.service_paused(template_lang)
+                    english_translation = "The service is currently paused. Please try again later."
             elif intent == "NO":
                 _clear_pending(session_id)
                 active_token = db.query(Token).filter(Token.id == target_token_id).first()
+                if active_token:
+                    ahead = queue_service.position(db, active_token.id)
+                    token_resp = TokenResponse(
+                        id=active_token.id,
+                        number=active_token.number,
+                        date=active_token.date,
+                        label=active_token.label,
+                        language=active_token.language,
+                        status=active_token.status,
+                        created_at=active_token.created_at,
+                        ahead_count=ahead,
+                    )
+                    reply_token_num = token_resp.number
                 queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                 t_reply_start = time.perf_counter()
                 reply_text, cache_key = replies.cancel_aborted(template_lang)
+                english_translation = "Token cancellation was cancelled."
             else:
                 target_tok = db.query(Token).filter(Token.id == target_token_id).first()
                 queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                 t_reply_start = time.perf_counter()
                 if target_tok:
-                    reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
-                    pending_confirm = True
+                    ahead = queue_service.position(db, target_tok.id)
                     active_token = target_tok
+                    token_resp = TokenResponse(
+                        id=target_tok.id,
+                        number=target_tok.number,
+                        date=target_tok.date,
+                        label=target_tok.label,
+                        language=target_tok.language,
+                        status=target_tok.status,
+                        created_at=target_tok.created_at,
+                        ahead_count=ahead,
+                    )
+                    reply_token_num = token_resp.number
+                    reply_text, cache_key = replies.cancel_confirm(token_resp.number, template_lang)
+                    pending_confirm = True
+                    english_translation = f"Are you sure you want to cancel token number {token_resp.number}? Please say yes or no."
                 else:
                     _clear_pending(session_id)
                     reply_text, cache_key = replies.no_token(template_lang)
+                    english_translation = "No active token was found for you."
 
         elif intent == "CANCEL":
             target_tok = None
@@ -497,12 +547,26 @@ def process_turn(
                 t_reply_start = time.perf_counter()
                 if not target_tok or target_tok.status in ("done", "cancelled", "no_show"):
                     reply_text, cache_key = replies.no_token(template_lang)
+                    english_translation = "No active token was found for you."
                     target_tok = None
                 else:
                     _set_pending(session_id, "CANCEL", target_tok.id)
-                    reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
-                    pending_confirm = True
                     active_token = target_tok
+                    ahead = queue_service.position(db, target_tok.id)
+                    token_resp = TokenResponse(
+                        id=target_tok.id,
+                        number=target_tok.number,
+                        date=target_tok.date,
+                        label=target_tok.label,
+                        language=target_tok.language,
+                        status=target_tok.status,
+                        created_at=target_tok.created_at,
+                        ahead_count=ahead,
+                    )
+                    reply_token_num = token_resp.number
+                    reply_text, cache_key = replies.cancel_confirm(token_resp.number, template_lang)
+                    pending_confirm = True
+                    english_translation = f"Are you sure you want to cancel token number {token_resp.number}? Please say yes or no."
             else:
                 today_str = queue_service.resolve_date("today")
                 target_tok = (
@@ -515,19 +579,49 @@ def process_turn(
                 t_reply_start = time.perf_counter()
                 if target_tok and target_tok.status not in ("done", "cancelled", "no_show"):
                     _set_pending(session_id, "CANCEL", target_tok.id)
-                    reply_text, cache_key = replies.cancel_confirm(target_tok.number, template_lang)
-                    pending_confirm = True
                     active_token = target_tok
+                    ahead = queue_service.position(db, target_tok.id)
+                    token_resp = TokenResponse(
+                        id=target_tok.id,
+                        number=target_tok.number,
+                        date=target_tok.date,
+                        label=target_tok.label,
+                        language=target_tok.language,
+                        status=target_tok.status,
+                        created_at=target_tok.created_at,
+                        ahead_count=ahead,
+                    )
+                    reply_token_num = token_resp.number
+                    reply_text, cache_key = replies.cancel_confirm(token_resp.number, template_lang)
+                    pending_confirm = True
+                    english_translation = f"Are you sure you want to cancel token number {token_resp.number}? Please say yes or no."
                 else:
                     reply_text, cache_key = replies.no_token(template_lang)
+                    english_translation = "No active token was found for you."
 
         elif intent == "BOOK":
             target_day = day or "tomorrow"
+            # Single source of truth: book creates the new token
             new_token = queue_service.book(db, day=target_day, language=template_lang)
+            active_token = new_token
+            ahead = queue_service.position(db, new_token.id)
+            token_resp = TokenResponse(
+                id=new_token.id,
+                number=new_token.number,
+                date=new_token.date,
+                label=new_token.label,
+                language=new_token.language,
+                status=new_token.status,
+                created_at=new_token.created_at,
+                ahead_count=ahead,
+            )
+            reply_token_num = token_resp.number
             queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
             t_reply_start = time.perf_counter()
-            reply_text, cache_key = replies.booked(new_token.number, target_day, template_lang)
-            active_token = new_token
+            reply_text, cache_key = replies.booked(token_resp.number, target_day, template_lang)
+            is_today = (target_day == "today")
+            day_en = "today" if is_today else "tomorrow"
+            english_translation = f"Your token for {day_en} is number {token_resp.number}. Please come to the clinic on time."
 
         elif intent == "STATUS":
             target_tok = None
@@ -535,14 +629,31 @@ def process_turn(
                 target_tok = db.query(Token).filter(Token.id == token_id).first()
                 if target_tok and target_tok.status in ("waiting", "in_consult"):
                     ahead = queue_service.position(db, target_tok.id)
+                    active_token = target_tok
+                    token_resp = TokenResponse(
+                        id=target_tok.id,
+                        number=target_tok.number,
+                        date=target_tok.date,
+                        label=target_tok.label,
+                        language=target_tok.language,
+                        status=target_tok.status,
+                        created_at=target_tok.created_at,
+                        ahead_count=ahead,
+                    )
+                    reply_token_num = token_resp.number
                     queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     t_reply_start = time.perf_counter()
-                    reply_text, cache_key = replies.status(target_tok.number, ahead, template_lang)
-                    active_token = target_tok
+                    reply_text, cache_key = replies.status(token_resp.number, ahead, template_lang)
+                    if ahead == 0:
+                        english_translation = f"Your token number is {token_resp.number}. It is your turn now, please proceed to the doctor."
+                    else:
+                        p_word = "patient" if ahead == 1 else "patients"
+                        english_translation = f"Your token number is {token_resp.number}. There are {ahead} {p_word} waiting ahead of you."
                 else:
                     queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.no_token(template_lang)
+                    english_translation = "No active token was found for you."
                     target_tok = None
             else:
                 today_str = queue_service.resolve_date("today")
@@ -554,14 +665,31 @@ def process_turn(
                 )
                 if target_tok and target_tok.status in ("waiting", "in_consult"):
                     ahead = queue_service.position(db, target_tok.id)
+                    active_token = target_tok
+                    token_resp = TokenResponse(
+                        id=target_tok.id,
+                        number=target_tok.number,
+                        date=target_tok.date,
+                        label=target_tok.label,
+                        language=target_tok.language,
+                        status=target_tok.status,
+                        created_at=target_tok.created_at,
+                        ahead_count=ahead,
+                    )
+                    reply_token_num = token_resp.number
                     queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     t_reply_start = time.perf_counter()
-                    reply_text, cache_key = replies.status(target_tok.number, ahead, template_lang)
-                    active_token = target_tok
+                    reply_text, cache_key = replies.status(token_resp.number, ahead, template_lang)
+                    if ahead == 0:
+                        english_translation = f"Your token number is {token_resp.number}. It is your turn now, please proceed to the doctor."
+                    else:
+                        p_word = "patient" if ahead == 1 else "patients"
+                        english_translation = f"Your token number is {token_resp.number}. There are {ahead} {p_word} waiting ahead of you."
                 else:
                     queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
                     t_reply_start = time.perf_counter()
                     reply_text, cache_key = replies.no_token(template_lang)
+                    english_translation = "No active token was found for you."
 
         elif intent == "UNKNOWN":
             queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
@@ -596,7 +724,18 @@ def process_turn(
         # Stage: response_build
         t_resp = time.perf_counter()
         b64_audio = base64.b64encode(wav_bytes).decode("ascii") if wav_bytes else None
-        token_resp = _to_token_response(active_token, db) if active_token else None
+        if not token_resp and active_token:
+            token_resp = _to_token_response(active_token, db)
+
+        reply_token_number = reply_token_num if reply_token_num is not None else (token_resp.number if token_resp else None)
+        # DO 1: Diagnosis log line per /voice/turn and /text/turn (never logs secrets)
+        print(
+            f"[Turn Diagnostic] intent={intent}, client_token_id={token_id}, "
+            f"token_id={token_resp.id if token_resp else None}, "
+            f"token_number={token_resp.number if token_resp else None}, "
+            f"reply_token_number={reply_token_number}"
+        )
+
         times["response_build"] = round((time.perf_counter() - t_resp) * 1000.0, 2)
         times["total"] = round((time.perf_counter() - t_start) * 1000.0, 2)
 
@@ -622,6 +761,8 @@ def process_turn(
             audio_bytes=a_bytes,
             audio_error=a_err,
             stage_times_ms=times,
+            english_translation=english_translation,
+            voice_error_reason=gnani.get_last_voice_error_reason() if a_err and "voice_not_supported" in str(a_err) else None,
         )
 
         # Quick Win 3: Database voice log audit and WebSocket broadcast happen after response preparation

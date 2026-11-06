@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 import wave
 
-from backend.app.config import settings, VALID_TIMBRE_VOICES
+from backend.app.config import settings, VALID_TIMBRE_VOICES, clean_voice_name
 from backend.app.services.audio import (
     AUDIO_CACHE_DIR,
     fix_wav_header,
@@ -129,7 +129,9 @@ def synthesize_alert_phrase(text: str, lang: str) -> Optional[bytes]:
     # Determine voice and TTS language
     is_te = (lang or "").startswith("te")
     tts_lang = "te-IN" if is_te else "en-IN"
-    target_voice = settings.VOICE_TE if is_te else settings.VOICE_EN
+    target_voice_raw = settings.VOICE_TE if is_te else settings.VOICE_EN
+    cleaned_voice, _ = clean_voice_name(target_voice_raw, lang=tts_lang)
+    target_voice = cleaned_voice or target_voice_raw
 
     if not target_voice or target_voice not in VALID_TIMBRE_VOICES:
         print(f"[Alert Voice] Configured voice '{target_voice}' not in VALID_TIMBRE_VOICES.")
