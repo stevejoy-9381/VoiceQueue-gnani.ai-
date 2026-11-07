@@ -1,7 +1,8 @@
 """REST API router for clinic tokens, queue operations, and demo utilities."""
 
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import time
+from typing import Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from backend.app.db import get_db
@@ -13,12 +14,37 @@ from backend.app.schemas import (
     TokenCreate,
     TokenResponse,
 )
-from backend.app.services import queue_service
+from backend.app.services import credit_protection, queue_service
 from backend.app.services.broadcast import (
     broadcast_demo_reset,
     broadcast_queue_change,
     broadcast_token_called,
 )
+
+_reset_rate_limits: Dict[str, list[float]] = {}
+RESET_RATE_LIMIT_CALLS = 5
+RESET_RATE_LIMIT_WINDOW = 60.0  # max 5 per minute per IP on deployed builds
+
+
+def _check_reset_rate_limit(request: Optional[Request] = None) -> None:
+    """Protects and rate-limits reset/seed endpoints on deployed builds."""
+    if not request:
+        return
+    client_ip = credit_protection.get_client_ip(request)
+    owner_key = request.headers.get("x-owner-key") if request else None
+    if credit_protection.is_owner(owner_key):
+        return
+    if not credit_protection.is_demo_limits_active(client_ip, request):
+        return
+    now = time.time()
+    history = _reset_rate_limits.setdefault(client_ip, [])
+    _reset_rate_limits[client_ip] = [t for t in history if now - t < RESET_RATE_LIMIT_WINDOW]
+    if len(_reset_rate_limits[client_ip]) >= RESET_RATE_LIMIT_CALLS:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: too many reset/seed requests. Please wait a minute.",
+        )
+    _reset_rate_limits[client_ip].append(now)
 
 router = APIRouter(tags=["Queue & Tokens"])
 
@@ -156,8 +182,9 @@ def mark_token_no_show(token_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/demo/reset", response_model=MessageResponse)
-def reset_demo_data(db: Session = Depends(get_db)):
+def reset_demo_data(request: Request = None, db: Session = Depends(get_db)):
     """Resets all queue tokens and interaction logs for a fresh demo."""
+    _check_reset_rate_limit(request)
     queue_service.reset_demo(db)
     today_str = queue_service.resolve_date("today")
     broadcast_queue_change(today_str)
@@ -169,9 +196,11 @@ def reset_demo_data(db: Session = Depends(get_db)):
 def seed_demo_data(
     day: str = Query("today"),
     count: int = Query(6),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """Seeds demo tokens (default 4 fake tokens)."""
+    _check_reset_rate_limit(request)
     try:
         target_date = queue_service.resolve_date(day)
     except ValueError as e:
