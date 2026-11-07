@@ -171,3 +171,71 @@ def test_status_and_cancel_refer_to_correct_token(db_session):
     assert resp_cancel.token.number == tok1.number
     assert str(tok1.number) in resp_cancel.english_translation or to_words(tok1.number, "te-IN") in resp_cancel.reply_text
 
+
+def test_three_consecutive_bookings_feed_card_translation_match(client, db_session):
+    """
+    Phase 1 requirement:
+    Book 3 times in a row (today and tomorrow).
+    Assert: Telugu/English text number, English line number, card number, and feed number
+    are equal each time.
+    """
+    # 1. Booking 1: Telugu for tomorrow
+    r1 = client.post("/text/turn", json={"text": "repu token kavali", "language": "te-IN", "session_id": "s1"})
+    assert r1.status_code == 200
+    data1 = r1.json()
+    card_num1 = data1["token"]["number"]
+    assert card_num1 == 1
+    assert to_words(card_num1, "te-IN") in data1["reply_text"]
+    assert f"number {card_num1}" in data1["english_translation"]
+
+    feed1 = client.get("/voice-logs?limit=1").json()
+    assert len(feed1) >= 1
+    assert feed1[0]["token_number"] == card_num1
+
+    # 2. Booking 2: Telugu for today
+    r2 = client.post("/text/turn", json={"text": "ee roju token kavali", "language": "te-IN", "session_id": "s1", "token_id": data1["token"]["id"]})
+    assert r2.status_code == 200
+    data2 = r2.json()
+    card_num2 = data2["token"]["number"]
+    assert card_num2 == 1  # First token for today
+    assert to_words(card_num2, "te-IN") in data2["reply_text"]
+    assert f"number {card_num2}" in data2["english_translation"]
+
+    feed2 = client.get("/voice-logs?limit=1").json()
+    assert feed2[0]["token_number"] == card_num2
+
+    # 3. Booking 3: English for tomorrow
+    r3 = client.post("/text/turn", json={"text": "I need a token for tomorrow", "language": "en-IN", "session_id": "s1", "token_id": data2["token"]["id"]})
+    assert r3.status_code == 200
+    data3 = r3.json()
+    card_num3 = data3["token"]["number"]
+    assert card_num3 == 2  # Second token for tomorrow
+    assert to_words(card_num3, "en-IN").lower() in data3["reply_text"].lower()
+    assert f"number {card_num3}" in data3["english_translation"]
+
+    feed3 = client.get("/voice-logs?limit=1").json()
+    assert feed3[0]["token_number"] == card_num3
+
+
+def test_demo_reset_clears_tokens_and_avoids_stale_polling(client):
+    """
+    Phase 1 requirement:
+    Assert no 404 polling after Reset demo (stop polling a token that no longer exists).
+    """
+    # Create a token first
+    r = client.post("/text/turn", json={"text": "repu token kavali", "language": "te-IN", "session_id": "s-poll"})
+    tok_id = r.json()["token"]["id"]
+
+    # Token exists
+    get_res = client.get(f"/tokens/{tok_id}")
+    assert get_res.status_code == 200
+
+    # Reset demo
+    reset_res = client.post("/demo/reset")
+    assert reset_res.status_code == 200
+
+    # The token is deleted in the backend
+    stale_res = client.get(f"/tokens/{tok_id}")
+    assert stale_res.status_code == 404
+
+

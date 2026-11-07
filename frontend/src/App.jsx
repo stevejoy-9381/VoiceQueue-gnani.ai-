@@ -259,18 +259,19 @@ const WORD_TO_NUM = {
 };
 
 function extractNumberFromReply(text, token) {
-  // 1. Check digits in reply text
+  // 1. Authoritative source: token object returned by the action
+  if (token && token.number != null) return String(token.number);
+  // 2. Check digits in reply text
   if (text) {
     const matchDigit = text.match(/\d+/);
     if (matchDigit) return matchDigit[0];
-    // 2. Check number words in reply text (primary source of truth for spoken/written number)
+    // 3. Check number words in reply text: sort entries by word length descending so 'పదిహేడు' (17) matches before 'పది' (10)
     const lowerText = text.toLowerCase();
-    for (const [w, n] of Object.entries(WORD_TO_NUM)) {
+    const sortedEntries = Object.entries(WORD_TO_NUM).sort((a, b) => b[0].length - a[0].length);
+    for (const [w, n] of sortedEntries) {
       if (text.includes(w) || lowerText.includes(w)) return String(n);
     }
   }
-  // 3. Fallback to token object if present
-  if (token && token.number) return String(token.number);
   return '1';
 }
 
@@ -278,26 +279,25 @@ function getEnglishTranslation(replyText, token, serverTranslation) {
   if (serverTranslation) return serverTranslation;
   if (!replyText || !/[\u0C00-\u0C7F]/.test(replyText)) return null;
 
+  // Single source of truth for the token number
+  const num = token?.number != null ? String(token.number) : extractNumberFromReply(replyText, token);
+
   // Booked
   if (replyText.includes('బుక్ అయింది')) {
-    const isToday = replyText.includes('ఈరోజు') || (token?.date === new Date().toISOString().split('T')[0]);
-    const num = extractNumberFromReply(replyText, token);
+    const isToday = replyText.includes('ఈరోజు') || (!replyText.includes('రేపు') && token?.date === new Date().toISOString().split('T')[0]);
     return `Your token for ${isToday ? 'today' : 'tomorrow'} is number ${num}. Please come to the clinic on time.`;
   }
   // Turn now
   if (replyText.includes('మీ వంతు వచ్చింది')) {
-    const num = extractNumberFromReply(replyText, token);
     return `Your token number is ${num}. It is your turn now, please proceed to the doctor.`;
   }
   // Waiting ahead
   if (replyText.includes('వేచి ఉన్నారు')) {
-    const num = extractNumberFromReply(replyText, token);
     const ahead = token ? (token.ahead_count ?? 0) : 0;
     return `Your token number is ${num}. There are ${ahead} ${ahead === 1 ? 'patient' : 'patients'} waiting ahead of you.`;
   }
   // Cancel confirm
   if (replyText.includes('రద్దు చేయాలనుకుంటున్నారా')) {
-    const num = extractNumberFromReply(replyText, token);
     return `Are you sure you want to cancel token number ${num}? Please say yes or no.`;
   }
   // Cancelled
@@ -774,6 +774,11 @@ export default function App() {
 
   async function fetchTokenDetails(tokenId) {
     if (!tokenId) return;
+    const storedId = getStoredTokenId();
+    if (!tokenRef.current && !storedId) {
+      // Demo reset or token cleared: stop polling immediately to avoid 404
+      return;
+    }
     const requestedId = Number(tokenId);
     activePollTokenIdRef.current = requestedId;
     try {
@@ -813,6 +818,7 @@ export default function App() {
         }
         setToken(null);
         tokenRef.current = null;
+        activePollTokenIdRef.current = null;
         try {
           localStorage.removeItem('vq_token_id');
         } catch (e) {}
@@ -841,9 +847,12 @@ export default function App() {
             const data = JSON.parse(event.data);
             if (data.type === 'demo_reset') {
               setToken(null);
+              tokenRef.current = null;
+              activePollTokenIdRef.current = null;
               setTokenCalledAlert(null);
               try {
                 localStorage.removeItem('vq_token_id');
+                localStorage.removeItem('vq_last_reply');
               } catch (e) {}
               setTokenClearedNotice('Your token was cleared. Say or type a request to book a new one.');
             } else if (data.type === 'queue_changed') {

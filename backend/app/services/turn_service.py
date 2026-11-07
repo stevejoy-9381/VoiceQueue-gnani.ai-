@@ -816,7 +816,7 @@ def process_turn(
 
         try:
             vlog = VoiceLog(
-                token_id=token_id,
+                token_id=active_token.id if active_token else token_id,
                 transcript=privacy.mask_text(transcript or ""),
                 detected_language=detected_lang,
                 intent="ERROR",

@@ -951,4 +951,45 @@ describe('Patient App Component Tests (Vitest + RTL)', () => {
       expect(screen.getByTestId('dev-token-info')).toHaveTextContent(/dev: token_id=17, token_number=17/)
     })
   })
+
+  it('22. Telugu reply with పదిహేడు translates to number 17 (never number 10)', async () => {
+    global.fetch = vi.fn((url) => {
+      const u = url.toString()
+      if (u.includes('/text/turn')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              transcript: 'repu token kavali',
+              intent: 'BOOK',
+              reply_text: 'మీ టోకెన్ రేపు నంబర్ పదిహేడు బుక్ అయింది. దయచేసి సమయానికి క్లినిక్‌కి రండి.',
+              // serverTranslation omitted to test fallback logic
+              english_translation: null,
+              token: { id: 25, number: 17, status: 'waiting', date: '2026-11-08' },
+            }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ gnani_configured: true, voices_valid: true, status: 'ok' }),
+      })
+    })
+
+    render(<App />)
+
+    const typeAccordion = screen.getByText(/టైప్ చేయండి|Type instead/i)
+    await userEvent.click(typeAccordion)
+
+    const input = screen.getByRole('textbox')
+    const sendBtn = screen.getByRole('button', { name: /పంపండి|Send/i })
+    await userEvent.type(input, 'repu token kavali')
+    await userEvent.click(sendBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Your token for tomorrow is number 17/i)).toBeInTheDocument()
+      expect(screen.queryByText(/number 10/i)).not.toBeInTheDocument()
+    })
+  })
 })
