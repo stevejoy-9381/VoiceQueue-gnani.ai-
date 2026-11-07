@@ -1017,22 +1017,27 @@ export default function App() {
       audio.currentTime = 0;
     } catch (e) {}
 
-    if (!currentBlobUrlRef.current) {
-      let blobUrl = '';
+    if (currentBlobUrlRef.current) {
       try {
-        const blob = b64ToBlob(b64, 'audio/wav');
-        blobUrl = URL.createObjectURL(blob);
-        currentBlobUrlRef.current = blobUrl;
-      } catch (err) {
-        console.error('Failed to convert audio b64 to Blob:', err);
-        setAudioError(getErrorDetails('audio_unavailable', language).message);
-        setLastPlayResult(`Decode error: ${err.message}`);
-        return;
-      }
-
-      audio.src = blobUrl;
-      audio.load();
+        URL.revokeObjectURL(currentBlobUrlRef.current);
+      } catch (e) {}
+      currentBlobUrlRef.current = null;
     }
+
+    let blobUrl = '';
+    try {
+      const blob = b64ToBlob(b64, 'audio/wav');
+      blobUrl = URL.createObjectURL(blob);
+      currentBlobUrlRef.current = blobUrl;
+    } catch (err) {
+      console.error('Failed to convert audio b64 to Blob:', err);
+      setAudioError(getErrorDetails('audio_unavailable', language).message);
+      setLastPlayResult(`Decode error: ${err.message}`);
+      return;
+    }
+
+    audio.src = blobUrl;
+    audio.load();
 
     // P2-2: Apply playback rate (0.85x for slower reply) with preservesPitch
     try {
