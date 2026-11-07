@@ -219,8 +219,22 @@ def voice_turn(
             detail="Gnani API key is missing. Add GNANI_API_KEY to backend/.env",
         )
 
+    # Validate file extension if filename provided
+    if audio.filename:
+        file_ext = os.path.splitext(audio.filename)[1].lower()
+        if file_ext and file_ext not in audio_service.ALLOWED_AUDIO_EXTENSIONS and file_ext not in (".bin", ".tmp"):
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported media type: '{file_ext}'. Allowed audio types are WAV, WebM, OGG, M4A, MP3.",
+            )
+
     try:
         raw_audio_bytes = audio.file.read()
+        if len(raw_audio_bytes) > audio_service.MAX_AUDIO_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Payload too large: audio file size ({len(raw_audio_bytes)} bytes) exceeds the 10MB limit.",
+            )
         wav_bytes, audio_stats, cleaning_ran, audio_stage_times = audio_service.process_voice_audio_timed(
             raw_audio_bytes,
             filename=audio.filename or "recording.wav",

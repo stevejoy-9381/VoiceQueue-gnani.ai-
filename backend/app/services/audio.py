@@ -26,6 +26,8 @@ DEBUG_AUDIO_DIR = BASE_DIR / "backend" / "debug_audio"
 
 MAX_AUDIO_DURATION_SECONDS = 30.0
 MIN_AUDIO_DURATION_SECONDS = 0.5
+MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB maximum audio upload size
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".wave", ".webm", ".ogg", ".oga", ".m4a", ".mp4", ".mp3"}
 
 
 class AudioQualityGateError(Exception):
@@ -103,16 +105,29 @@ def compute_audio_stats(wav_bytes: bytes) -> Dict[str, float]:
 
 
 def detect_audio_extension(raw_bytes: bytes, filename: str) -> str:
-    """Detects file format prioritizing WAV, followed by WebM, OGG, M4A."""
-    if raw_bytes.startswith(b"RIFF") or filename.lower().endswith(".wav"):
+    """Validates audio file type and size, prioritizing WAV, WebM, OGG, M4A, MP3."""
+    if len(raw_bytes) > MAX_AUDIO_BYTES:
+        raise AudioQualityGateError("too_large", f"Audio size {len(raw_bytes)} bytes exceeds 10MB limit.")
+
+    # Check magic bytes first
+    if raw_bytes.startswith(b"RIFF"):
         return ".wav"
-    if raw_bytes.startswith(b"\x1a\x45\xdf\xa3") or filename.lower().endswith(".webm"):
+    if raw_bytes.startswith(b"\x1a\x45\xdf\xa3"):
         return ".webm"
-    if raw_bytes.startswith(b"OggS") or filename.lower().endswith(".ogg"):
+    if raw_bytes.startswith(b"OggS"):
         return ".ogg"
-    if filename.lower().endswith(".m4a"):
+    if len(raw_bytes) >= 8 and raw_bytes[4:8] in (b"ftyp", b"moov", b"mdat"):
         return ".m4a"
-    return Path(filename).suffix or ".wav"
+    if raw_bytes.startswith((b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")):
+        return ".mp3"
+
+    ext = Path(filename).suffix.lower() if filename else ""
+    if ext in ALLOWED_AUDIO_EXTENSIONS:
+        return ext
+    if not ext or ext in (".tmp", ".bin"):
+        return ".wav"
+
+    raise AudioQualityGateError("unsupported_format", f"Unsupported audio file extension: '{ext}'")
 
 
 _LAST_DEBUG_FILES: tuple[Optional[str], Optional[str]] = (None, None)
