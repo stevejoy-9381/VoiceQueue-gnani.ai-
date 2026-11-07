@@ -594,10 +594,10 @@ def validate_wav(wav_bytes: bytes, text: Optional[str] = None) -> WavInfo:
             f"WAV audio duration {duration_seconds:.2f}s is shorter than minimum 0.3s."
         )
 
-    # Check against text length minimum if text is supplied
+    # Check against text length minimum if text is supplied (allow natural neural speech cadence up to ~28 chars/sec)
     if text and text.strip():
         char_count = len(text.strip())
-        min_expected_duration = max(0.3, char_count * 0.05)
+        min_expected_duration = max(0.3, char_count * 0.035)
         if duration_seconds < min_expected_duration:
             raise ValueError(
                 f"WAV audio duration {duration_seconds:.2f}s is much shorter than expected minimum "

@@ -313,7 +313,7 @@ def _generate_or_get_audio(
         _log_audio_line(tts_lang, "none", 0.0, 0)
         return AudioResult(None, "none", None, None, friendly_msg, audio_err)
     except gnani.TTSInvalidAudioError as e:
-        _safe_print(f"[TTS Audio Error Detail] {e}")
+        _safe_print(f"[TTS Failure] Invalid audio returned for voice='{target_voice}' lang='{tts_lang}': {e}")
         friendly_msg = (
             "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
             if is_te
@@ -325,7 +325,7 @@ def _generate_or_get_audio(
         detail = str(e)
         if "voice" in detail.lower():
             gnani.set_last_voice_error_reason("voice_not_in_list")
-            _safe_print("TTS voice rejected: set VOICE_EN or VOICE_TE in backend/.env")
+            _safe_print(f"[TTS Failure] Voice '{target_voice}' rejected for lang='{tts_lang}': set VOICE_EN or VOICE_TE in backend/.env")
             friendly_msg = (
                 "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
                 if is_te
@@ -335,6 +335,7 @@ def _generate_or_get_audio(
             _log_audio_line(tts_lang, "none", 0.0, 0)
             return AudioResult(None, "none", None, None, friendly_msg, audio_err)
         short_err = "tts_invalid_audio" if "invalid" in detail.lower() else "tts_failed"
+        _safe_print(f"[TTS Failure] Synthesis failed for voice='{target_voice}' lang='{tts_lang}' ({short_err}): {detail}")
         friendly_msg = (
             "ధ్వని ప్రత్యుత్తరం ప్రస్తుతం అందుబాటులో లేదు."
             if is_te

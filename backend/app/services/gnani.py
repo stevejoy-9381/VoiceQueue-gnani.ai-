@@ -383,14 +383,18 @@ def tts(text: str, lang: str, voice: str | None = None) -> bytes:
             return repaired_audio
         except Exception as val_err:
             _log_call_usage(kind="tts", cached=False, ok=False)
+            print(f"[TTS Failure] Audio validation failed: {sanitize_gnani_error(str(val_err))}")
             raise TTSInvalidAudioError(f"tts_invalid_audio: {val_err}")
-    except VoiceNotSupportedError:
+    except VoiceNotSupportedError as v_err:
         _log_call_usage(kind="tts", cached=False, ok=False)
+        print(f"[TTS Failure] Unsupported voice '{selected_voice}' for '{tts_lang}': {sanitize_gnani_error(str(v_err))}")
         raise
     except TTSInvalidAudioError:
         raise
     except Exception as exc:
         _log_call_usage(kind="tts", cached=False, ok=False)
+        sanitized_exc = sanitize_gnani_error(str(exc))
+        print(f"[TTS Failure] Synthesis error for '{selected_voice}' ({tts_lang}): {sanitized_exc}")
         exc_str = str(exc)
         if "voice" in exc_str.lower():
             set_last_voice_error_reason("voice_not_in_list")
