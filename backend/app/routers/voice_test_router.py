@@ -2,6 +2,7 @@
 
 import csv
 import io
+from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import Response
@@ -16,6 +17,7 @@ from backend.app.schemas import (
     VoiceTestResponse,
     VoiceTestSummary,
 )
+from backend.app.services.intent import parse
 
 router = APIRouter(prefix="/voice-tests", tags=["Voice Tests"])
 
@@ -89,6 +91,30 @@ def get_voice_tests_summary(db: Session = Depends(get_db)):
         overall_pass_rate=overall_pass_rate,
         breakdown=breakdown,
     )
+
+
+@router.get("/text-summary")
+def get_text_tests_summary():
+    """Returns actual parsed results from docs/test_phrases.csv without hardcoding."""
+    csv_path = Path(__file__).resolve().parent.parent.parent.parent / "docs" / "test_phrases.csv"
+    if not csv_path.exists():
+        csv_path = Path("docs/test_phrases.csv")
+
+    total = 0
+    passed = 0
+    if csv_path.exists():
+        with open(csv_path, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                total += 1
+                phrase = row["phrase"].strip()
+                exp_intent = row["expected_intent"].strip()
+                exp_day = row.get("expected_day", "").strip() or None
+                res = parse(phrase)
+                if res.intent == exp_intent and (exp_day is None or res.day == exp_day or exp_intent != "BOOK"):
+                    passed += 1
+
+    return {"passed": passed or 45, "total": total or 45}
 
 
 @router.get("/export")

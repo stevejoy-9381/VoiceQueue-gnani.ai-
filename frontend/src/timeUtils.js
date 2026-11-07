@@ -29,3 +29,4 @@ export function formatTimeIST(dateOrStr = new Date()) {
     hour12: true,
   });
 }
+

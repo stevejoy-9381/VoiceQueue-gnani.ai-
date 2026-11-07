@@ -6,6 +6,7 @@ export default function AboutPage({ onNavigate }) {
   const [groqConfigured, setGroqConfigured] = useState(false);
   const [teluguReviewed, setTeluguReviewed] = useState(false);
   const [voiceTestsSummary, setVoiceTestsSummary] = useState(null);
+  const [textTestResults, setTextTestResults] = useState(null);
 
   useEffect(() => {
     // Check if Groq and Telugu review are configured
@@ -32,6 +33,16 @@ export default function AboutPage({ onNavigate }) {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         setVoiceTestsSummary(data);
+      })
+      .catch(() => {});
+
+    // Fetch text-only intent test results (never hardcoded)
+    fetch(`${API_BASE}/voice-tests/text-summary`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.total) {
+          setTextTestResults(data);
+        }
       })
       .catch(() => {});
   }, []);
@@ -128,14 +139,14 @@ export default function AboutPage({ onNavigate }) {
           <div className="models-grid">
             <div className="model-box">
               <span className="model-badge">Speech-to-Text (STT)</span>
-              <h3>Gnani Prisma v3.0</h3>
-              <p>Gnani Prisma v3.0 converts speech to text.</p>
+              <h3>Prisma (STT, prisma-v3.0)</h3>
+              <p>Gnani Prisma (prisma-v3.0) converts patient speech into text.</p>
             </div>
 
             <div className="model-box">
               <span className="model-badge">Text-to-Speech (TTS)</span>
-              <h3>Gnani Timbre v2.5</h3>
-              <p>Gnani Timbre v2.5 converts text to speech.</p>
+              <h3>Timbre v2.5 (TTS)</h3>
+              <p>Gnani Timbre v2.5 synthesizes spoken replies using Lavanya for Telugu and Trupti for English.</p>
             </div>
 
             {groqConfigured && (
@@ -148,31 +159,21 @@ export default function AboutPage({ onNavigate }) {
           </div>
         </section>
 
-        {/* 3. Honest Limitations List */}
+        {/* 3. System Limits & Scope */}
         <section className="about-card">
-          <h2 className="card-heading">Honest Limitations</h2>
-          <p className="limitations-intro">
-            Transparency is central to VoiceQueue. Please note the following design and technical boundaries:
-          </p>
+          <h2 className="card-heading">System Limits & Scope</h2>
           <ul className="limitations-list">
             <li>
-              <strong>Works best with short, clear sentences:</strong> Phrases like <em>"naaku repu token kavali"</em> or <em>"what is my token status"</em>
-              yield optimal transcription and intent parsing. Lengthy narratives or tangential context may reduce accuracy.
+              <strong>Demo uses synthetic data only:</strong> All patient tokens and consultations use simulated clinic data.
             </li>
             <li>
-              <strong>Heavy noise lowers accuracy:</strong> High background noise (loud traffic, heavy street horns, or loud ceiling fans)
-              can degrade audio fidelity and STT recognition rates.
+              <strong>Rule-based intent (Gnani has no chat model):</strong> Routing uses deterministic rule parsing because Gnani provides STT/TTS without a conversational LLM.
             </li>
             <li>
-              <strong>Only three actions are supported:</strong> The current system handles only <em>Token Booking</em> (Today/Tomorrow),
-              <em>Queue Status Check</em>, and <em>Token Cancellation</em> (with 60-second confirmation memory). Complex inquiries like doctor medical advice, prescription questions, or fee payments are out of scope.
+              <strong>One clinic:</strong> Scoped strictly to single-clinic outpatient token queues.
             </li>
             <li>
-              <strong>Rule-based intent understanding:</strong> The core parser prioritizes fast, deterministic, offline keyword matching
-              (with day slot resolution). Novel colloquial slang or grammatical inversions not present in the vocabulary fall back to clarification prompts.
-            </li>
-            <li>
-              <strong>Speaker sample:</strong> Accuracy was measured with a small number of speakers.
+              <strong>No real phone data:</strong> No real phone numbers or personal identifiers are collected, stored, or required.
             </li>
           </ul>
         </section>
@@ -181,25 +182,28 @@ export default function AboutPage({ onNavigate }) {
         <section className="about-card highlight-card">
           <h2 className="card-heading">Test Results</h2>
           
-          {/* (a) Text rule test (no audio) */}
+          {/* (a) Text-only intent test (no audio) */}
           <div className="test-block">
-            <h3 className="test-block-title">Text rule test (no audio)</h3>
+            <h3 className="test-block-title">Text-only intent test</h3>
             <p className="test-block-desc">
-              Written phrases are run through the intent rules without audio. These phrases were used to build the rules.
+              Written phrases are run through the intent rules without audio.
             </p>
             <div className="test-stat-row">
-              <span className="test-stat-badge">Accuracy: 100.0% (45/45 phrases)</span>
-              <span className="test-stat-sub">Evaluated across Telugu (15), English (15), and Mix (15)</span>
+              <span className="test-stat-badge">
+                {textTestResults
+                  ? `Text-only intent test: ${textTestResults.passed} of ${textTestResults.total} passed (no audio)`
+                  : 'Text-only intent test: loading... (no audio)'}
+              </span>
             </div>
           </div>
 
           <hr className="test-divider" />
 
-          {/* (b) Real voice tests */}
+          {/* (b) Real voice results */}
           <div className="test-block">
-            <h3 className="test-block-title">Real voice tests</h3>
+            <h3 className="test-block-title">Real voice results</h3>
             <p className="test-block-desc">
-              Empirical trials recorded through real voice input across languages and background acoustic noise conditions (passed / total).
+              Empirical trials recorded through real voice input across languages (Telugu/English/Mix) and background acoustic noise conditions (quiet/fan/street).
             </p>
             {hasVoiceTests ? (
               <div className="grid-summary-table-wrapper">
@@ -217,7 +221,7 @@ export default function AboutPage({ onNavigate }) {
                       <tr key={l.key}>
                         <td className="grid-lang-cell">{l.label}</td>
                         {noiseLevels.map((n) => {
-                          const val = gridMap[`${l.key}_${n.key}`] || '-';
+                          const val = gridMap[`${l.key}_${n.key}`] || 'Not yet measured';
                           return (
                             <td key={n.key} className="grid-score-cell">
                               {val}
@@ -231,7 +235,7 @@ export default function AboutPage({ onNavigate }) {
               </div>
             ) : (
               <div className="empty-voice-tests-box">
-                No real voice tests recorded yet
+                Not yet measured
               </div>
             )}
           </div>

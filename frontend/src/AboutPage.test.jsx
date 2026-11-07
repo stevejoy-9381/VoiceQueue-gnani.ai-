@@ -79,5 +79,31 @@ describe('AboutPage Component Tests (Phase P2-6)', () => {
     })
     expect(screen.queryByText(/reviewed by a native speaker/i)).not.toBeInTheDocument()
   })
+
+  it('3. Displays honest text-only results, "Not yet measured", named Gnani models, and limits', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url) => {
+      if (url.includes('/voice-tests/text-summary')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ passed: 45, total: 45 }),
+        })
+      }
+      if (url.includes('/voice-tests/summary')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ total_trials: 0, breakdown: [] }) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+
+    render(<AboutPage onNavigate={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Text-only intent test: 45 of 45 passed \(no audio\)/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Not yet measured/i)).toBeInTheDocument()
+    expect(screen.getByText(/Prisma \(STT, prisma-v3\.0\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/Lavanya for Telugu and Trupti for English/i)).toBeInTheDocument()
+    expect(screen.getByText(/Rule-based intent \(Gnani has no chat model\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/No real phone data/i)).toBeInTheDocument()
+  })
 })
 
