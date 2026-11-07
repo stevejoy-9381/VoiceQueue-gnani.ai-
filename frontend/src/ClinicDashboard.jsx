@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './ClinicDashboard.css';
 import { API_BASE, getWebSocketUrl } from './config.js';
+import { formatTimeIST } from './timeUtils.js';
 
 function formatLanguageName(code) {
   if (!code) return '';
@@ -27,7 +28,7 @@ export default function ClinicDashboard() {
 
   // P2-5: Live status dot & last updated timestamp
   const [wsStatus, setWsStatus] = useState('connecting'); // 'live', 'reconnecting', 'connecting'
-  const [lastUpdated, setLastUpdated] = useState(() => new Date().toLocaleTimeString());
+  const [lastUpdated, setLastUpdated] = useState(() => formatTimeIST(new Date()));
 
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -39,7 +40,7 @@ export default function ClinicDashboard() {
       const res = await fetch(`${API_BASE}/queue?day=${dayTab}`);
       if (res.ok) {
         const data = await res.json();
-        setLastUpdated(new Date().toLocaleTimeString());
+        setLastUpdated(formatTimeIST(new Date()));
         if (data.tokens && data.tokens.length > prevTokensCountRef.current) {
           const newest = data.tokens[data.tokens.length - 1];
           if (newest) {
@@ -126,11 +127,11 @@ export default function ClinicDashboard() {
 
       ws.onopen = () => {
         setWsStatus('live');
-        setLastUpdated(new Date().toLocaleTimeString());
+        setLastUpdated(formatTimeIST(new Date()));
       };
 
       ws.onmessage = (event) => {
-        setLastUpdated(new Date().toLocaleTimeString());
+        setLastUpdated(formatTimeIST(new Date()));
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'queue_changed') {

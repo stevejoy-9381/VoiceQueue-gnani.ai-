@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './VoiceTests.css';
 import { API_BASE } from './config.js';
+import { formatTimeIST } from './timeUtils.js';
 
 const INTENTS = ['BOOK', 'STATUS', 'CANCEL', 'YES', 'NO', 'UNKNOWN'];
 const NOISE_LEVELS = [
@@ -20,7 +21,7 @@ export default function VoiceTests({ onBack }) {
   const [noise, setNoise] = useState('quiet');
   const [expectedIntent, setExpectedIntent] = useState('BOOK');
   const [gotIntent, setGotIntent] = useState('BOOK');
-  const [passed, setPassed] = useState(true);
+  const [passed, setPassed] = useState(null);
   const [intendedSentence, setIntendedSentence] = useState('');
   const [transcript, setTranscript] = useState('');
   const [note, setNote] = useState('');
@@ -34,15 +35,12 @@ export default function VoiceTests({ onBack }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Auto-sync passed state when expected or got changes
   const handleExpectedChange = (val) => {
     setExpectedIntent(val);
-    setPassed(val === gotIntent);
   };
 
   const handleGotChange = (val) => {
     setGotIntent(val);
-    setPassed(expectedIntent === val);
   };
 
   // Fetch telemetry data
@@ -80,6 +78,10 @@ export default function VoiceTests({ onBack }) {
       setFeedback('⚠️ Please enter a transcript for the test trial.');
       return;
     }
+    if (passed === null) {
+      setFeedback('⚠️ Please select a trial outcome (PASS or FAIL).');
+      return;
+    }
 
     setSubmitting(true);
     setFeedback('');
@@ -109,6 +111,7 @@ export default function VoiceTests({ onBack }) {
       setFeedback('✅ Voice test trial recorded successfully!');
       setIntendedSentence('');
       setTranscript('');
+      setPassed(null);
       setNote('');
       fetchData();
     } catch (err) {
@@ -157,7 +160,7 @@ export default function VoiceTests({ onBack }) {
         </div>
         <div className="tests-header-right">
           <button type="button" className="btn-export-csv" onClick={handleExportCsv}>
-            📥 Export CSV
+            Export CSV
           </button>
           <button type="button" className="btn-back-dash" onClick={onBack}>
             ← Back to Dashboard
@@ -265,14 +268,14 @@ export default function VoiceTests({ onBack }) {
               <div className="pass-fail-toggle">
                 <button
                   type="button"
-                  className={`toggle-btn ${passed ? 'active pass' : ''}`}
+                  className={`toggle-btn ${passed === true ? 'active pass' : ''}`}
                   onClick={() => setPassed(true)}
                 >
                   ✓ PASS
                 </button>
                 <button
                   type="button"
-                  className={`toggle-btn ${!passed ? 'active fail' : ''}`}
+                  className={`toggle-btn ${passed === false ? 'active fail' : ''}`}
                   onClick={() => setPassed(false)}
                 >
                   ✕ FAIL
@@ -421,11 +424,7 @@ export default function VoiceTests({ onBack }) {
                     <td className="cell-transcript">"{t.transcript}"</td>
                     <td className="cell-note">{t.note || '—'}</td>
                     <td className="cell-time">
-                      {new Date(t.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
+                      {formatTimeIST(t.created_at)}
                     </td>
                   </tr>
                 ))}

@@ -1,10 +1,23 @@
 """Turn orchestration service coordinating STT, intent parsing, queue operations, and TTS."""
 
 import base64
+from datetime import datetime, timezone
 import re
 import time
 from typing import Dict, Optional, Tuple
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def format_ist_time(dt: Optional[datetime]) -> str:
+    """Formats UTC datetime into IST (Asia/Kolkata) string e.g. '9:48 PM'."""
+    if not dt:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(IST).strftime("%I:%M %p").lstrip("0")
 
 from backend.app.config import settings, VALID_TIMBRE_VOICES, clean_voice_name
 from backend.app.models import Token, VoiceLog

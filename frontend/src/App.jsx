@@ -101,7 +101,11 @@ const UI_STRINGS = {
     step2Desc: 'మీ టోకెన్ బుకింగ్, స్టేటస్ లేదా రద్దు అభ్యర్థనలను సిస్టమ్ గుర్తిస్తుంది.',
     step3Title: 'సమాధానం వినండి',
     step3Desc: 'సహాయకుడు సమాధానం చెబుతాడు మరియు మీ టోకెన్ వెంటనే బుక్ అవుతుంది.',
-    syntheticNote: 'సింథటిక్ డేటాతో చిన్న క్లినిక్‌ల కోసం డెమో. నిజమైన క్లినిక్‌కు కనెక్ట్ చేయబడలేదు.',
+    syntheticNote: 'నిజమైన ఫోన్ నంబర్లు లేదా వ్యక్తిగత వివరాలు చెప్పవద్దు. ఇది సింథటిక్ డేటాతో కూడిన డెమో.',
+    micLabel: 'మైక్ (Mic):',
+    micCheck: '🎙️ మైక్ చెక్ (Mic check)',
+    micChecking: '🎙️ తనిఖీ చేస్తోంది (Checking)',
+    aboutLink: 'వాయిస్‌క్యూ మరియు పరిమితుల గురించి (About VoiceQueue & Limitations) →',
     emptyTokenState: 'ఇంకా టోకెన్ లేదు. ఇలా చెప్పి చూడండి: రేపు టోకెన్ కావాలి',
     cancelConfirmPrompt: 'మీరు టోకెన్ రద్దు చేయాలనుకుంటున్నారా?',
     yesBtn: 'అవును (Yes)',
@@ -147,7 +151,11 @@ const UI_STRINGS = {
     step2Desc: 'Our system identifies your request to book, check status, or cancel.',
     step3Title: 'You hear the answer',
     step3Desc: 'The assistant speaks the answer and books your token immediately.',
-    syntheticNote: 'A demo for small clinics with synthetic data. Not connected to a real clinic.',
+    syntheticNote: 'Do not say real phone numbers or personal details. This is a demo with synthetic data.',
+    micLabel: 'Mic:',
+    micCheck: '🎙️ Mic check',
+    micChecking: '🎙️ Checking',
+    aboutLink: 'About VoiceQueue & Limitations →',
     emptyTokenState: 'No token yet. Try saying: I need a token for tomorrow',
     cancelConfirmPrompt: 'Do you want to cancel your token?',
     yesBtn: 'Yes',
@@ -193,7 +201,11 @@ const UI_STRINGS = {
     step2Desc: 'Our system identifies your booking, status, or cancellation request.',
     step3Title: 'You hear the answer',
     step3Desc: 'The assistant speaks the answer and books your token immediately.',
-    syntheticNote: 'A demo with synthetic data. Not connected to a real clinic.',
+    syntheticNote: 'Do not say real phone numbers or personal details. This is a demo with synthetic data.',
+    micLabel: 'Mic:',
+    micCheck: '🎙️ Mic check',
+    micChecking: '🎙️ Checking',
+    aboutLink: 'About VoiceQueue & Limitations →',
     emptyTokenState: 'No token yet. Try saying: Repu token kavali',
     cancelConfirmPrompt: 'Token cancel cheyala? (Cancel token?)',
     yesBtn: 'Avunu (Yes)',
@@ -1780,7 +1792,7 @@ export default function App() {
         {!isClean && (
           <div className="mic-device-selector">
             <span className="mic-device-label">
-              Mic: <strong>{activeMicName || 'Default'}</strong>
+              {t.micLabel} <strong>{activeMicName || 'Default'}</strong>
             </span>
             {micDevices.length > 1 && (
               <select
@@ -1815,7 +1827,7 @@ export default function App() {
               disabled={micChecking || state === 'recording'}
               title="Record 3 seconds to check mic volume and noise level"
             >
-              {micChecking ? `🎙️ Checking (${micCountdown}s)...` : '🎙️ Mic check'}
+              {micChecking ? `${t.micChecking} (${micCountdown}s)...` : t.micCheck}
             </button>
           </div>
         )}
@@ -1918,7 +1930,7 @@ export default function App() {
         )}
 
         <p className="privacy-synthetic-line" style={{ fontSize: '0.82rem', color: '#6F4E37', textAlign: 'center', marginTop: '12px', opacity: 0.85 }}>
-          Do not say real phone numbers or personal details. This is a demo with synthetic data.
+          {t.syntheticNote}
         </p>
       </section>
 
@@ -2227,7 +2239,7 @@ export default function App() {
       {/* 7. Footer Link to /about and /audio-lab if dev=1 */}
       <footer className="app-footer">
         <button type="button" className="footer-link" onClick={() => navigateTo('/about')}>
-          About VoiceQueue & Limitations →
+          {t.aboutLink}
         </button>
         {typeof window !== 'undefined' && window.location.search.includes('dev=1') && (
           <button

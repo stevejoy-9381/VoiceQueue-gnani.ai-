@@ -578,7 +578,7 @@ def get_voice_logs(
 
     items = []
     for vlog, token_num in logs:
-        time_str = vlog.created_at.strftime("%H:%M:%S") if vlog.created_at else ""
+        time_str = turn_service.format_ist_time(vlog.created_at)
         items.append(
             VoiceLogItem(
                 id=vlog.id,
@@ -720,9 +720,9 @@ def get_audio_lab_turns(db: Session = Depends(get_db)):
                 cleaned_url = f"/debug-audio/{log.cleaned_audio_file}"
 
         created_str = (
-            log.created_at.strftime("%H:%M:%S")
+            turn_service.format_ist_time(log.created_at)
             if log.created_at
-            else datetime.now().strftime("%H:%M:%S")
+            else turn_service.format_ist_time(datetime.now(timezone.utc))
         )
 
         items.append(
