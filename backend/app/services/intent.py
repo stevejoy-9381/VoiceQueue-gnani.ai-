@@ -401,9 +401,5 @@ def parse(text: str, pending_confirm: bool = False) -> ParseResult:
             return fallback
         return ParseResult(intent="UNKNOWN", day=None, confidence=confidence)
 
-    # BOOK with no day defaults to tomorrow
     day = extracted_day
-    if winning_intent == "BOOK" and day is None:
-        day = "tomorrow"
-
     return ParseResult(intent=winning_intent, day=day, confidence=confidence)

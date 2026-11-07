@@ -239,3 +239,74 @@ def test_demo_reset_clears_tokens_and_avoids_stale_polling(client):
     assert stale_res.status_code == 404
 
 
+def test_reply_language_and_day_assumption(db_session):
+    """
+    Phase 3:
+    1. Spoken language detection takes priority over mode hint.
+    2. If no day is said, ask 'Today or tomorrow?' and wait without assuming.
+    3. If day is said, book immediately.
+    """
+    # Case 1: "token kavali" in English mode -> Spoke Telugu, no day -> Ask day in Telugu
+    resp1 = turn_service.process_turn(
+        db=db_session,
+        transcript="token kavali",
+        detected_lang="en",
+        requested_lang="en",
+        session_id="phase3-sess-1",
+    )
+    assert resp1.reply_language == "Telugu"
+    assert "ఈరోజా లేదా రేపా?" in resp1.reply_text
+    assert resp1.token is None
+    assert resp1.pending_confirm is True
+
+    # Answering day with "today" completes booking for today
+    resp1_ans = turn_service.process_turn(
+        db=db_session,
+        transcript="today",
+        detected_lang="en",
+        requested_lang="en",
+        session_id="phase3-sess-1",
+    )
+    assert resp1_ans.token is not None
+    assert resp1_ans.token.date == queue_service.resolve_date("today")
+
+    # Case 2: "I need a token" in Telugu mode -> Spoke English, no day -> Ask day in English
+    resp2 = turn_service.process_turn(
+        db=db_session,
+        transcript="I need a token",
+        detected_lang="te",
+        requested_lang="te",
+        session_id="phase3-sess-2",
+    )
+    assert resp2.reply_language == "English"
+    assert "Today or tomorrow?" in resp2.reply_text
+    assert resp2.token is None
+    assert resp2.pending_confirm is True
+
+    # Case 3: "repu token kavali" -> Day specified -> Books tomorrow immediately without day question
+    resp3 = turn_service.process_turn(
+        db=db_session,
+        transcript="repu token kavali",
+        detected_lang="te",
+        requested_lang="mix",
+        session_id="phase3-sess-3",
+    )
+    assert resp3.token is not None
+    assert resp3.token.date == queue_service.resolve_date("tomorrow")
+    assert "Today or tomorrow?" not in resp3.reply_text
+    assert "ఈరోజా లేదా రేపా?" not in resp3.reply_text
+
+    # Case 4: "today token" -> Day specified -> Books today immediately without day question
+    resp4 = turn_service.process_turn(
+        db=db_session,
+        transcript="today token",
+        detected_lang="en",
+        requested_lang="en",
+        session_id="phase3-sess-4",
+    )
+    assert resp4.token is not None
+    assert resp4.token.date == queue_service.resolve_date("today")
+    assert "Today or tomorrow?" not in resp4.reply_text
+    assert "ఈరోజా లేదా రేపా?" not in resp4.reply_text
+
+

@@ -122,11 +122,10 @@ def resolve_languages(
 ) -> Tuple[str, str]:
     """
     Determines template language and TTS language code:
-    - Telugu mode ('te'): replies in Telugu ('te-IN')
-    - English mode ('en'): replies in English ('en-IN')
-    - Mix mode ('mix'): follows the language used most in the transcript:
-      Counts Telugu-script characters and Latin words (ignoring loanwords).
-      Uses detected_language from Prisma as tie-breaker; if still unsure, replies in English.
+    - Rule: reply in the language the patient SPOKE (detected from the transcript).
+    - Mode English/Telugu is only the STT hint.
+    - Mix mode replies in Telugu with English words.
+    - If transcript has no language markers or is empty, falls back to mode hint.
     TTS pairs for timbre-v2.5:
     - Telugu reply ALWAYS uses VOICE_TE with language te-IN
     - English reply ALWAYS uses VOICE_EN with language en-IN
@@ -135,19 +134,20 @@ def resolve_languages(
     user_lang = (user_lang_param or "").lower().strip()
     det_lang = (detected_lang or "").lower().strip()
 
-    if user_lang == "te":
+    if user_lang == "mix":
         lang = "te-IN"
-    elif user_lang == "en":
-        lang = "en-IN"
-    elif user_lang == "mix":
-        lang = pick_mix_reply_language(transcript, det_lang)
+    elif transcript and transcript.strip():
+        fallback_hint = "te-IN" if user_lang == "te" else ("en-IN" if user_lang == "en" else det_lang)
+        lang = pick_mix_reply_language(transcript, detected_lang=fallback_hint)
     else:
-        if det_lang.startswith("en"):
+        if user_lang == "te":
+            lang = "te-IN"
+        elif user_lang == "en":
             lang = "en-IN"
         elif det_lang.startswith("te"):
             lang = "te-IN"
         else:
-            lang = pick_mix_reply_language(transcript, det_lang)
+            lang = "en-IN"
 
     return lang, lang
 
@@ -540,6 +540,44 @@ def process_turn(
                     reply_text, cache_key = replies.no_token(template_lang)
                     english_translation = "No active token was found for you."
 
+        elif pending_data and pending_data.get("action") == "BOOK_DAY":
+            day_candidate = day or intent_service._extract_day(clean_text)
+            if day_candidate in ("today", "tomorrow"):
+                _clear_pending(session_id)
+                target_day = day_candidate
+                new_token = queue_service.book(db, day=target_day, language=template_lang)
+                active_token = new_token
+                ahead = queue_service.position(db, new_token.id)
+                token_resp = TokenResponse(
+                    id=new_token.id,
+                    number=new_token.number,
+                    date=new_token.date,
+                    label=new_token.label,
+                    language=new_token.language,
+                    status=new_token.status,
+                    created_at=new_token.created_at,
+                    ahead_count=ahead,
+                )
+                reply_token_num = token_resp.number
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
+                reply_text, cache_key = replies.booked(token_resp.number, target_day, template_lang)
+                is_today = (target_day == "today")
+                day_en = "today" if is_today else "tomorrow"
+                english_translation = f"Your token for {day_en} is number {token_resp.number}. Please come to the clinic on time."
+            elif intent == "CANCEL":
+                _clear_pending(session_id)
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
+                reply_text, cache_key = replies.cancel_aborted(template_lang)
+                english_translation = "Token booking was cancelled."
+            else:
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
+                reply_text, cache_key = replies.ask_day(template_lang)
+                english_translation = "Today or tomorrow?"
+                pending_confirm = True
+
         elif intent == "CANCEL":
             target_tok = None
             if token_id is not None:
@@ -601,28 +639,36 @@ def process_turn(
                     english_translation = "No active token was found for you."
 
         elif intent == "BOOK":
-            target_day = day or "tomorrow"
-            # Single source of truth: book creates the new token
-            new_token = queue_service.book(db, day=target_day, language=template_lang)
-            active_token = new_token
-            ahead = queue_service.position(db, new_token.id)
-            token_resp = TokenResponse(
-                id=new_token.id,
-                number=new_token.number,
-                date=new_token.date,
-                label=new_token.label,
-                language=new_token.language,
-                status=new_token.status,
-                created_at=new_token.created_at,
-                ahead_count=ahead,
-            )
-            reply_token_num = token_resp.number
-            queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
-            t_reply_start = time.perf_counter()
-            reply_text, cache_key = replies.booked(token_resp.number, target_day, template_lang)
-            is_today = (target_day == "today")
-            day_en = "today" if is_today else "tomorrow"
-            english_translation = f"Your token for {day_en} is number {token_resp.number}. Please come to the clinic on time."
+            if not day:
+                # Rule: if no day is said, the app must ASK "Today or tomorrow?" (in the reply language) and wait. It must never assume.
+                _set_pending(session_id, "BOOK_DAY", 0)
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
+                reply_text, cache_key = replies.ask_day(template_lang)
+                english_translation = "Today or tomorrow?"
+                pending_confirm = True
+            else:
+                target_day = day
+                new_token = queue_service.book(db, day=target_day, language=template_lang)
+                active_token = new_token
+                ahead = queue_service.position(db, new_token.id)
+                token_resp = TokenResponse(
+                    id=new_token.id,
+                    number=new_token.number,
+                    date=new_token.date,
+                    label=new_token.label,
+                    language=new_token.language,
+                    status=new_token.status,
+                    created_at=new_token.created_at,
+                    ahead_count=ahead,
+                )
+                reply_token_num = token_resp.number
+                queue_elapsed = (time.perf_counter() - t_queue) * 1000.0
+                t_reply_start = time.perf_counter()
+                reply_text, cache_key = replies.booked(token_resp.number, target_day, template_lang)
+                is_today = (target_day == "today")
+                day_en = "today" if is_today else "tomorrow"
+                english_translation = f"Your token for {day_en} is number {token_resp.number}. Please come to the clinic on time."
 
         elif intent == "STATUS":
             target_tok = None

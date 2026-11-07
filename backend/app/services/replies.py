@@ -28,6 +28,16 @@ def say_again(lang: str = "te-IN") -> Tuple[str, str]:
     return text, f"say_again_{lp}"
 
 
+def ask_day(lang: str = "te-IN") -> Tuple[str, str]:
+    """Prompt asking patient to specify today or tomorrow when no day was mentioned."""
+    lp = _lang_prefix(lang)
+    if lp == "te":
+        text = "ఈరోజా లేదా రేపా?"
+    else:
+        text = "Today or tomorrow?"
+    return text, f"ask_day_{lp}"
+
+
 def booked(number: int, day: str, lang: str = "te-IN") -> Tuple[str, Optional[str]]:
     """Reply for successfully booked token. Contains number -> cache_key is None."""
     num_word = to_words(number, lang)
@@ -142,6 +152,7 @@ def no_speech(lang: str = "te-IN") -> Tuple[str, str]:
 FIXED_PHRASE_GENERATORS = {
     "greeting": greeting,
     "say_again": say_again,
+    "ask_day": ask_day,
     "cancelled": cancelled,
     "no_token": no_token,
     "unknown": unknown,

@@ -1963,7 +1963,7 @@ export default function App() {
             <span className="translation-tag">EN:</span> {getEnglishTranslation(replyText, token, replyEnglishTranslation)}
           </p>
         )}
-        {replyText && replyLanguage && (
+        {replyText && replyLanguage && ((language === 'en' && replyLanguage.toLowerCase().startsWith('te')) || (language === 'te' && replyLanguage.toLowerCase().startsWith('en'))) && (
           <p className="reply-language-indicator" data-testid="reply-language-indicator">
             Reply language: {replyLanguage}
           </p>
