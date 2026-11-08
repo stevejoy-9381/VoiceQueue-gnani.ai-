@@ -50,6 +50,13 @@ def init_db():
                 for col_name, col_type in new_cols:
                     if col_name not in existing_cols:
                         conn.exec_driver_sql(f"ALTER TABLE voice_logs ADD COLUMN {col_name} {col_type};")
+
+                # Ensure intended_sentence exists in voice_tests
+                vt_cursor = conn.exec_driver_sql("PRAGMA table_info(voice_tests);")
+                vt_cols = {row[1] for row in vt_cursor.fetchall()}
+                if "intended_sentence" not in vt_cols:
+                    conn.exec_driver_sql("ALTER TABLE voice_tests ADD COLUMN intended_sentence TEXT;")
+
                 conn.commit()
             except Exception:
                 pass
