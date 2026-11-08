@@ -40,6 +40,10 @@ In Indian outpatient clinics, long physical queues and digital kiosks with compl
 | :---: | :---: |
 | ![Tests Page](docs/screenshots/07_tests_page.png)<br>*Field testing interface with logged trials* | ![About Page](docs/screenshots/08_about_page.png)<br>*System overview, design philosophy, and metrics* |
 
+| Real Voice Turn (Telugu) | Real Voice Turn (Mix) |
+| :---: | :---: |
+| ![Real voice turn in Telugu](docs/screenshots/09_real_voice_telugu.png)<br>*Real voice turn in Telugu (my own voice)* | ![Real voice turn in Telugu + English mix](docs/screenshots/10_real_voice_mix.png)<br>*Real voice turn in Telugu + English mix (my own voice)* |
+
 ## How It Works
 1. **Speak / Type**: Patient speaks into the microphone (or types a turn).
 2. **Audio Preprocessing**: Browser records audio; backend verifies WAV format, sample rate (16kHz mono), silence, and volume.
